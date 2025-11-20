@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { cors } from 'hono/cors';
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { createServer } from 'http';
@@ -10,12 +11,29 @@ import { setupVideoWorker } from './workers/videoWorker';
 const app = new Hono();
 const PORT = parseInt(process.env.PORT || '3000', 10);
 
+const allowedOrigins = [process.env.FRONTEND_URL || 'http://localhost:5173'];
+
+app.use('/*', cors({
+    origin: (origin) => {
+        if (origin && origin.startsWith('http://localhost:')) return origin;
+        return allowedOrigins[0];
+    },
+    credentials: true,
+}));
+
 // Create HTTP server for Socket.IO
 const httpServer = createServer();
 const io = new SocketIOServer(httpServer, {
     cors: {
-        origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+        origin: (origin, callback) => {
+            if (!origin || origin.startsWith('http://localhost:') || allowedOrigins.includes(origin)) {
+                callback(null, true);
+            } else {
+                callback(new Error('Not allowed by CORS'));
+            }
+        },
         methods: ['GET', 'POST'],
+        credentials: true,
     },
 });
 

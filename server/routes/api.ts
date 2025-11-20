@@ -101,9 +101,38 @@ app.post('/upload-folder', async (c) => {
 });
 
 // Create job from manual input
-app.post('/generate', async (c) => {
+// Create job from manual input
+app.post('/generate', multerMiddleware(upload.any()), async (c) => {
     try {
-        const { slides } = await c.req.json();
+        let slides: any[] = [];
+        let audioMap: Record<string, string> = {};
+
+        // Check if content type is multipart
+        const contentType = c.req.header('content-type') || '';
+
+        if (contentType.includes('multipart/form-data')) {
+            const formData = await c.req.parseBody();
+            if (formData.slides) {
+                slides = JSON.parse(formData.slides as string);
+            }
+
+            // Handle uploaded audio files
+            const files = (c.req as any).files as Express.Multer.File[];
+            if (files && files.length > 0) {
+                for (const file of files) {
+                    // Expect fieldname to be "audio_{slideId}"
+                    const match = file.fieldname.match(/^audio_(.+)$/);
+                    if (match) {
+                        const slideId = match[1];
+                        audioMap[slideId] = file.path;
+                    }
+                }
+            }
+        } else {
+            // JSON request
+            const body = await c.req.json();
+            slides = body.slides;
+        }
 
         if (!slides || !Array.isArray(slides) || slides.length === 0) {
             return c.json({ error: 'Invalid slides data' }, 400);
@@ -113,6 +142,7 @@ app.post('/generate', async (c) => {
         const jobData: VideoJobData = {
             jobId,
             slides,
+            audioMap: Object.keys(audioMap).length > 0 ? audioMap : undefined,
         };
 
         await videoQueue.add(jobData, {

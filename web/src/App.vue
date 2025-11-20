@@ -37,6 +37,36 @@
       <!-- Manual Input Section -->
       <section class="manual-section">
         <h2>✏️ 手動入力</h2>
+        
+        <div class="audio-settings">
+            <h3>音声合成エンジン</h3>
+            <div class="radio-group">
+                <label>
+                    <input type="radio" v-model="audioEngine" value="voicevox">
+                    VOICEVOX (サーバー)
+                </label>
+                <label>
+                    <input type="radio" v-model="audioEngine" value="web-speech">
+                    Web Speech API (プレビューのみ)
+                </label>
+                <label>
+                    <input type="radio" v-model="audioEngine" value="sherpa-onnx">
+                    Sherpa-onnx (Wasm)
+                </label>
+            </div>
+            
+            <div v-if="audioEngine === 'sherpa-onnx'" class="sherpa-controls">
+                <button 
+                    @click="loadSherpa" 
+                    :disabled="isSherpaReady || isSherpaLoading"
+                    class="btn-secondary"
+                >
+                    {{ isSherpaReady ? 'Sherpa-onnx ロード済み' : (isSherpaLoading ? 'ロード中...' : 'Sherpa-onnx をロード') }}
+                </button>
+                <p class="note">※ 初回ロード時にモデルのダウンロードが発生します</p>
+            </div>
+        </div>
+
         <div class="slides-container">
           <div v-for="(slide, index) in slides" :key="slide.id" class="slide-row">
             <div class="slide-number">{{ index + 1 }}</div>
@@ -84,7 +114,7 @@
       <section v-if="videoUrl" class="video-section">
         <h2>🎥 生成された動画</h2>
         <video :src="videoUrl" controls class="video-player"></video>
-        <a :href="videoUrl" download class="btn-primary">ダウンロード</a>
+        <a href="#" @click.prevent="downloadVideo" class="btn-primary">ダウンロード</a>
       </section>
     </main>
   </div>
@@ -106,7 +136,7 @@ interface JobProgress {
   message: string;
 }
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const API_URL = import.meta.env.VITE_API_URL || '';
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3001';
 
 const slides = ref<Slide[]>([]);
@@ -206,6 +236,29 @@ async function uploadFiles() {
   }
 }
 
+// Audio Engine Logic
+import { SherpaOnnxService, WebSpeechService, type AudioEngine } from './services/audio-synthesis';
+
+const audioEngine = ref<AudioEngine>('voicevox');
+const sherpaService = new SherpaOnnxService();
+const webSpeechService = new WebSpeechService();
+const isSherpaReady = ref(false);
+const isSherpaLoading = ref(false);
+
+async function loadSherpa() {
+  isSherpaLoading.value = true;
+  try {
+    await sherpaService.initialize();
+    isSherpaReady.value = true;
+    alert('Sherpa-onnx (Wasm) のロードが完了しました');
+  } catch (error) {
+    console.error('Sherpa load error:', error);
+    alert('Sherpa-onnx のロードに失敗しました');
+  } finally {
+    isSherpaLoading.value = false;
+  }
+}
+
 async function generateVideo() {
   if (slides.value.length === 0) return;
   
@@ -213,12 +266,38 @@ async function generateVideo() {
   videoUrl.value = null;
   
   try {
+    const formData = new FormData();
+    formData.append('slides', JSON.stringify(slides.value));
+
+    // Handle client-side audio generation if needed
+    if (audioEngine.value === 'sherpa-onnx') {
+        if (!isSherpaReady.value) {
+            throw new Error('Sherpa-onnx がロードされていません。ロードボタンを押してください。');
+        }
+        
+        currentJob.value = { jobId: 'client-gen', progress: 0, message: 'クライアントで音声を生成中...' };
+        
+        for (let i = 0; i < slides.value.length; i++) {
+            const slide = slides.value[i];
+            if (slide.script) {
+                const blob = await sherpaService.generateAudio(slide.script);
+                formData.append(`audio_${slide.id}`, blob, `${slide.id}.wav`);
+            }
+        }
+    } else if (audioEngine.value === 'web-speech') {
+        // Web Speech API is preview only, but we can send the request to server
+        // The server will use VOICEVOX as fallback or we can warn user
+        // For now, we'll just warn and proceed (server uses VOICEVOX if no audio sent)
+        if (!confirm('Web Speech API は動画生成には使用できません（プレビューのみ）。\nサーバー側の VOICEVOX で音声を生成しますか？')) {
+            isGenerating.value = false;
+            currentJob.value = null;
+            return;
+        }
+    }
+
     const response = await fetch(`${API_URL}/api/generate`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ slides: slides.value }),
+      body: formData, // Send as FormData
     });
     
     const data = await response.json();
@@ -235,7 +314,28 @@ async function generateVideo() {
     }
   } catch (error) {
     isGenerating.value = false;
+    currentJob.value = null;
     alert(`生成エラー: ${error}`);
+  }
+}
+
+async function downloadVideo() {
+  if (!videoUrl.value) return;
+  
+  try {
+    const response = await fetch(videoUrl.value);
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = videoUrl.value.split('/').pop() || 'video.mp4';
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  } catch (error) {
+    console.error('Download failed:', error);
+    alert('ダウンロードに失敗しました。右クリックで保存してください。');
   }
 }
 </script>
@@ -407,5 +507,45 @@ button:disabled {
   max-width: 800px;
   border-radius: 8px;
   margin-bottom: 20px;
+}
+
+.audio-settings {
+    background: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.audio-settings h3 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    font-size: 1.1rem;
+    color: #444;
+}
+
+.radio-group {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 15px;
+}
+
+.radio-group label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.sherpa-controls {
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid #eee;
+}
+
+.note {
+    font-size: 0.9rem;
+    color: #666;
+    margin-top: 8px;
 }
 </style>
