@@ -40,30 +40,54 @@
         
         <div class="audio-settings">
             <h3>音声合成エンジン</h3>
-            <div class="radio-group">
+            <div class="audio-engine-selector">
                 <label>
                     <input type="radio" v-model="audioEngine" value="voicevox">
                     VOICEVOX (サーバー)
                 </label>
                 <label>
-                    <input type="radio" v-model="audioEngine" value="web-speech">
-                    Web Speech API (プレビューのみ)
+                    <input type="radio" v-model="audioEngine" value="transformers">
+                    Transformers.js (ブラウザ)
                 </label>
                 <label>
                     <input type="radio" v-model="audioEngine" value="sherpa-onnx">
-                    Sherpa-onnx (Wasm)
+                    Sherpa-onnx (ブラウザWasm)
                 </label>
             </div>
             
             <div v-if="audioEngine === 'sherpa-onnx'" class="sherpa-controls">
-                <button 
-                    @click="loadSherpa" 
-                    :disabled="isSherpaReady || isSherpaLoading"
-                    class="btn-secondary"
-                >
-                    {{ isSherpaReady ? 'Sherpa-onnx ロード済み' : (isSherpaLoading ? 'ロード中...' : 'Sherpa-onnx をロード') }}
-                </button>
-                <p class="note">※ 初回ロード時にモデルのダウンロードが発生します</p>
+                <div class="status-row">
+                    <button 
+                        @click="loadSherpa" 
+                        :disabled="isSherpaReady || isSherpaLoading"
+                        class="btn-secondary"
+                    >
+                        {{ isSherpaReady ? 'Sherpa-onnx ロード済み' : (isSherpaLoading ? 'ロード中...' : 'Sherpa-onnx をロード') }}
+                    </button>
+                    <span v-if="isSherpaReady" class="status-success">✅ 準備完了</span>
+                </div>
+                <p v-if="sherpaError" class="status-error">{{ sherpaError }}</p>
+                <p class="note">※ 初回ロード時にモデルのダウンロードが発生します (約50MB)</p>
+            </div>
+
+            <div v-if="audioEngine === 'transformers'" class="sherpa-controls">
+                <div class="status-row">
+                    <button 
+                        @click="loadTransformers" 
+                        :disabled="isTransformersReady || isTransformersLoading"
+                        class="btn-secondary"
+                    >
+                        {{ isTransformersReady ? 'Transformers.js ロード済み' : (isTransformersLoading ? 'ロード中...' : 'Transformers.js をロード') }}
+                    </button>
+                    <span v-if="isTransformersReady" class="status-success">✅ 準備完了</span>
+                </div>
+                <p v-if="transformersError" class="status-error">{{ transformersError }}</p>
+                <p class="note">※ 初回ロード時にモデルのダウンロードが発生します (約100-200MB)</p>
+                <p class="note">※ 英語のみ対応 (SpeechT5モデル)</p>
+            </div>
+            
+            <div v-if="audioEngine === 'transformers' || audioEngine === 'sherpa-onnx'" class="note-box">
+                <p>※ ブラウザ生成モード: FFmpeg.wasmを使用してブラウザ上で動画を生成します。</p>
             </div>
         </div>
 
@@ -91,7 +115,10 @@
             <button @click="removeSlide(index)" class="btn-danger">削除</button>
           </div>
         </div>
-        <button @click="addSlide" class="btn-secondary">+ スライドを追加</button>
+        <div class="controls-row">
+            <button @click="addSlide" class="btn-secondary">+ スライドを追加</button>
+            <button @click="clearSlides" class="btn-danger">内容をクリア</button>
+        </div>
         <button
           @click="generateVideo"
           :disabled="slides.length === 0 || isGenerating"
@@ -114,15 +141,17 @@
       <section v-if="videoUrl" class="video-section">
         <h2>🎥 生成された動画</h2>
         <video :src="videoUrl" controls class="video-player"></video>
-        <a href="#" @click.prevent="downloadVideo" class="btn-primary">ダウンロード</a>
+        <a :href="videoUrl" download class="btn-primary">ダウンロード</a>
       </section>
     </main>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, onMounted, onUnmounted, watch } from 'vue';
 import { io, Socket } from 'socket.io-client';
+import { sherpaService, transformersService, type AudioEngine } from './services/audio';
+import { BrowserVideoGenerator } from './services/video';
 
 interface Slide {
   id: string;
@@ -138,6 +167,7 @@ interface JobProgress {
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3001';
+const STORAGE_KEY = 'presentation_maker_slides';
 
 const slides = ref<Slide[]>([]);
 const selectedFiles = ref<File[]>([]);
@@ -147,7 +177,24 @@ const isGenerating = ref(false);
 const currentJob = ref<JobProgress | null>(null);
 const videoUrl = ref<string | null>(null);
 
+const audioEngine = ref<AudioEngine>('voicevox');
+// サービスはシングルトンとしてインポート
+const browserVideoGenerator = new BrowserVideoGenerator();
+
+const isSherpaLoading = ref(false);
+const isSherpaReady = ref(false);
+const sherpaError = ref<string | null>(null);
+
+const isTransformersLoading = ref(false);
+const isTransformersReady = ref(false);
+const transformersError = ref<string | null>(null);
+
 let socket: Socket | null = null;
+
+// データ永続化
+watch(slides, (newSlides) => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(newSlides));
+}, { deep: true });
 
 onMounted(() => {
   socket = io(SOCKET_URL);
@@ -170,13 +217,59 @@ onMounted(() => {
     alert(`エラー: ${data.error}`);
   });
   
-  // Add initial slide
-  addSlide();
+  // ローカルストレージから読み込み、または初期スライドを追加
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) {
+      try {
+          slides.value = JSON.parse(saved);
+      } catch (e) {
+          console.error('Failed to load slides from storage', e);
+          addSlide();
+      }
+  } else {
+      addSlide();
+  }
+
+  // サービスのステータスを確認
+  if (transformersService.isReady()) {
+      isTransformersReady.value = true;
+  }
+  if (sherpaService.isReady()) {
+      isSherpaReady.value = true;
+  }
 });
 
 onUnmounted(() => {
   socket?.disconnect();
 });
+
+const loadSherpa = async () => {
+    isSherpaLoading.value = true;
+    sherpaError.value = null;
+    try {
+        await sherpaService.initialize();
+        isSherpaReady.value = true;
+    } catch (error) {
+        console.error('Sherpa load error:', error);
+        sherpaError.value = `ロード失敗: ${error}`;
+    } finally {
+        isSherpaLoading.value = false;
+    }
+};
+
+const loadTransformers = async () => {
+    isTransformersLoading.value = true;
+    transformersError.value = null;
+    try {
+        await transformersService.initialize();
+        isTransformersReady.value = true;
+    } catch (error) {
+        console.error('Transformers.js load error:', error);
+        transformersError.value = `ロード失敗: ${error}`;
+    } finally {
+        isTransformersLoading.value = false;
+    }
+};
 
 function addSlide() {
   slides.value.push({
@@ -188,6 +281,16 @@ function addSlide() {
 
 function removeSlide(index: number) {
   slides.value.splice(index, 1);
+}
+
+function clearSlides() {
+    if (confirm('入力内容をすべてクリアしますか？')) {
+        slides.value = [];
+        localStorage.removeItem(STORAGE_KEY);
+        currentJob.value = null;
+        videoUrl.value = null;
+        addSlide(); // 空のスライドを1つ追加
+    }
 }
 
 function triggerFileInput() {
@@ -236,29 +339,6 @@ async function uploadFiles() {
   }
 }
 
-// Audio Engine Logic
-import { SherpaOnnxService, WebSpeechService, type AudioEngine } from './services/audio-synthesis';
-
-const audioEngine = ref<AudioEngine>('voicevox');
-const sherpaService = new SherpaOnnxService();
-const webSpeechService = new WebSpeechService();
-const isSherpaReady = ref(false);
-const isSherpaLoading = ref(false);
-
-async function loadSherpa() {
-  isSherpaLoading.value = true;
-  try {
-    await sherpaService.initialize();
-    isSherpaReady.value = true;
-    alert('Sherpa-onnx (Wasm) のロードが完了しました');
-  } catch (error) {
-    console.error('Sherpa load error:', error);
-    alert('Sherpa-onnx のロードに失敗しました');
-  } finally {
-    isSherpaLoading.value = false;
-  }
-}
-
 async function generateVideo() {
   if (slides.value.length === 0) return;
   
@@ -266,38 +346,74 @@ async function generateVideo() {
   videoUrl.value = null;
   
   try {
-    const formData = new FormData();
-    formData.append('slides', JSON.stringify(slides.value));
-
-    // Handle client-side audio generation if needed
-    if (audioEngine.value === 'sherpa-onnx') {
-        if (!isSherpaReady.value) {
-            throw new Error('Sherpa-onnx がロードされていません。ロードボタンを押してください。');
-        }
+    // Transformers と Sherpa のブラウザ側生成
+    if (audioEngine.value === 'transformers' || audioEngine.value === 'sherpa-onnx') {
+        const audioBlobs: Record<string, Blob> = {};
         
-        currentJob.value = { jobId: 'client-gen', progress: 0, message: 'クライアントで音声を生成中...' };
-        
-        for (let i = 0; i < slides.value.length; i++) {
-            const slide = slides.value[i];
-            if (slide.script) {
-                const blob = await sherpaService.generateAudio(slide.script);
-                formData.append(`audio_${slide.id}`, blob, `${slide.id}.wav`);
+        if (audioEngine.value === 'sherpa-onnx') {
+            if (!isSherpaReady.value) {
+                throw new Error('Sherpa-onnx がロードされていません。ロードボタンを押してください。');
+            }
+            currentJob.value = { jobId: 'browser-gen', progress: 0, message: '音声を生成中 (Sherpa-onnx)...' };
+            
+            for (let i = 0; i < slides.value.length; i++) {
+                const slide = slides.value[i];
+                if (slide && slide.script) {
+                    currentJob.value = { 
+                        jobId: 'browser-gen', 
+                        progress: Math.floor((i / slides.value.length) * 30), 
+                        message: `スライド ${i + 1}/${slides.value.length} の音声を生成中...` 
+                    };
+                    audioBlobs[slide.id] = await sherpaService.generateAudio(slide.script);
+                }
+            }
+        } else {
+            if (!isTransformersReady.value) {
+                throw new Error('Transformers.js がロードされていません。ロードボタンを押してください。');
+            }
+            currentJob.value = { jobId: 'browser-gen', progress: 0, message: '音声を生成中 (Transformers.js)...' };
+            
+            for (let i = 0; i < slides.value.length; i++) {
+                const slide = slides.value[i];
+                if (slide && slide.script) {
+                    currentJob.value = { 
+                        jobId: 'browser-gen', 
+                        progress: Math.floor((i / slides.value.length) * 30), 
+                        message: `スライド ${i + 1}/${slides.value.length} の音声を生成中...` 
+                    };
+                    audioBlobs[slide.id] = await transformersService.generateAudio(slide.script);
+                }
             }
         }
-    } else if (audioEngine.value === 'web-speech') {
-        // Web Speech API is preview only, but we can send the request to server
-        // The server will use VOICEVOX as fallback or we can warn user
-        // For now, we'll just warn and proceed (server uses VOICEVOX if no audio sent)
-        if (!confirm('Web Speech API は動画生成には使用できません（プレビューのみ）。\nサーバー側の VOICEVOX で音声を生成しますか？')) {
-            isGenerating.value = false;
-            currentJob.value = null;
-            return;
-        }
+
+        // FFmpeg生成を開始
+        currentJob.value = { jobId: 'browser-gen', progress: 30, message: 'ブラウザで動画を生成中 (FFmpeg.wasm)...' };
+        
+        const videoBlob = await browserVideoGenerator.generateVideo(
+            slides.value,
+            audioBlobs,
+            (progress, message) => {
+                currentJob.value = {
+                    jobId: 'browser-gen',
+                    progress: 30 + Math.floor(progress * 0.7),
+                    message
+                };
+            }
+        );
+        
+        videoUrl.value = window.URL.createObjectURL(videoBlob);
+        currentJob.value = null;
+        isGenerating.value = false;
+        return;
     }
 
+    // サーバー側生成 (VOICEVOX)
     const response = await fetch(`${API_URL}/api/generate`, {
       method: 'POST',
-      body: formData, // Send as FormData
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ slides: slides.value }),
     });
     
     const data = await response.json();
@@ -316,26 +432,7 @@ async function generateVideo() {
     isGenerating.value = false;
     currentJob.value = null;
     alert(`生成エラー: ${error}`);
-  }
-}
-
-async function downloadVideo() {
-  if (!videoUrl.value) return;
-  
-  try {
-    const response = await fetch(videoUrl.value);
-    const blob = await response.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = videoUrl.value.split('/').pop() || 'video.mp4';
-    document.body.appendChild(a);
-    a.click();
-    window.URL.revokeObjectURL(url);
-    document.body.removeChild(a);
-  } catch (error) {
-    console.error('Download failed:', error);
-    alert('ダウンロードに失敗しました。右クリックで保存してください。');
+    console.error(error);
   }
 }
 </script>
@@ -383,6 +480,12 @@ section {
   flex-direction: column;
   gap: 20px;
   margin-bottom: 20px;
+}
+
+.controls-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
 }
 
 .slide-row {
@@ -543,9 +646,45 @@ button:disabled {
     border-top: 1px solid #eee;
 }
 
+.note-box {
+    margin-top: 15px;
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: 4px;
+    border-left: 4px solid #42b983;
+}
+
+.note-box p {
+    margin: 0;
+    font-size: 0.9rem;
+    color: #666;
+}
+
 .note {
     font-size: 0.9rem;
     color: #666;
     margin-top: 8px;
+}
+
+.status-row {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 8px;
+}
+
+.status-success {
+    color: #4CAF50;
+    font-weight: bold;
+    font-size: 1.1rem;
+}
+
+.status-error {
+    color: #f44336;
+    font-weight: bold;
+    margin-top: 8px;
+    padding: 8px;
+    background-color: #ffebee;
+    border-radius: 4px;
 }
 </style>

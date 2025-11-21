@@ -33,7 +33,6 @@ export interface VideoJobData {
         markdown: string;
         script: string;
     }>;
-    audioMap?: Record<string, string>; // slideId -> audioFilePath
 }
 
 export interface JobProgress {

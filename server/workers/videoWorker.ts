@@ -52,16 +52,7 @@ export function setupVideoWorker(io: SocketIOServer) {
                 let duration = 5;
                 let audioExists = false;
 
-                if (job.data.audioMap && job.data.audioMap[slide.id]) {
-                    // Use provided audio file
-                    const providedAudioPath = job.data.audioMap[slide.id];
-                    if (await fs.pathExists(providedAudioPath)) {
-                        await fs.copy(providedAudioPath, audioPath);
-                        duration = await videoGenerator.getAudioDuration(audioPath);
-                        audioExists = true;
-                    }
-                } else if (slide.script.trim()) {
-                    // Generate with VOICEVOX
+                if (slide.script.trim()) {
                     await voicevox.generateAudio(slide.script, audioPath);
                     duration = await videoGenerator.getAudioDuration(audioPath);
                     audioExists = true;

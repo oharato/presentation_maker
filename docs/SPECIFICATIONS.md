@@ -120,21 +120,59 @@ interface JobProgress {
 
 ## 音声合成仕様
 
-### VOICEVOX API
+### サーバー側: VOICEVOX API
 - **ベースURL**: `http://127.0.0.1:50021` (デフォルト)
 - **エンドポイント**:
   - `POST /audio_query` - 音声クエリ作成
   - `POST /synthesis` - 音声合成
+- **出力形式**: WAV (16bit, 24kHz)
 
-### ポーズ構文
+#### ポーズ構文
 - **形式**: `[pause:N]`
 - **N**: 秒数 (小数点可)
 - **例**: `こんにちは。[pause:1.5]今日は...`
 
-### 無音音声キャッシング
+#### 無音音声キャッシング
 - 同じ長さの無音音声は再利用
 - 一時ディレクトリにキャッシュ
 - ファイル名: `silence_{秒数}s_{タイムスタンプ}.wav`
+
+### ブラウザ側: Sherpa-onnx (WASM)
+- **実装**: WebAssembly版Sherpa-onnx
+- **モデル**: 
+  - 日本語TTS: `vits-piper-ja` (推奨)
+  - その他のPiper互換モデル
+- **ロード方法**: CDN経由でスクリプトとモデルをロード
+- **出力形式**: WAV (16bit, 22.05kHz)
+- **制限事項**:
+  - 初回ロードに時間がかかる (モデルサイズ: 約50MB)
+  - ブラウザのメモリ制限に注意
+
+### ブラウザ側: Transformers.js (onnxruntime-web)
+- **実装**: Hugging Face Transformers.js v2.17.2
+- **モデル**: 
+  - `Xenova/speecht5_tts` (英語)
+  - `HifiGan` vocoder (自動ロード)
+- **ロード方法**: 
+  - `pipeline` 関数を使用
+  - `onnxruntime-web` v1.14.0 (CDN経由またはバンドル)
+- **出力形式**: WAV (16bit, 16kHz)
+- **制限事項**:
+  - 初回実行時にモデルダウンロード (約100-200MB)
+  - 日本語対応は未実装 (適切なモデルの選定が必要)
+- **キャッシュ戦略**:
+  - `env.useBrowserCache = true` を使用 (Cache API)
+  - 署名付きURLなどによるキャッシュ不整合時は自動リトライ
+  - ローカルファイル (`config.json`等) の誤キャッシュ (404 HTML) を検知して自動削除
+
+## クライアント側データ永続化
+
+### LocalStorage
+- **キー**: `presentation_maker_slides`
+- **保存タイミング**: スライドデータ (`slides` 配列) の変更時 (watch)
+- **読み込みタイミング**: アプリ初期化時 (`onMounted`)
+- **データ形式**: JSON文字列化された `Slide[]`
+- **クリア**: 「内容をクリア」ボタンで削除および初期化
 
 ## スライドレンダリング仕様
 
