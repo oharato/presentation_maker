@@ -10,19 +10,20 @@ const ws = new Hono<{ Bindings: Env }>();
 /**
  * WebSocket接続
  */
-ws.get('/', async (c) => {
+ws.get('/connect/:jobId', async (c) => {
+    const jobId = c.req.param('jobId');
     const upgradeHeader = c.req.header('Upgrade');
 
     if (upgradeHeader !== 'websocket') {
-        return c.json({ error: 'Expected WebSocket' }, 400);
+        return c.text('Expected Upgrade: websocket', 426);
     }
 
-    // Durable ObjectsにWebSocket接続を委譲
-    const jobId = c.req.query('jobId') || 'default';
-    const doId = c.env.JOB_MANAGER.idFromName(jobId);
-    const doStub = c.env.JOB_MANAGER.get(doId);
+    // Global Queueインスタンスに接続
+    // すべてのWebSocket接続を1つのDOで管理する
+    const id = c.env.JOB_MANAGER.idFromName('global-queue');
+    const stub = c.env.JOB_MANAGER.get(id);
 
-    return doStub.fetch(c.req.raw);
+    return stub.fetch(c.req.raw);
 });
 
 export { ws as wsRoutes };

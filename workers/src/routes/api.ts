@@ -54,25 +54,13 @@ api.post('/upload-folder', async (c) => {
             }
         }
 
-        // ジョブキューに追加
+        // ジョブキューに追加 (DOへの保存も含む)
         const queue = new JobQueue(c.env);
         await queue.addJob(jobId, { slides });
 
         // コンテナを起動 (オンデマンド)
         const containerManager = new ContainerManager(c.env);
         c.executionCtx.waitUntil(containerManager.startContainer());
-
-        // Durable Objectsにジョブステータスを初期化
-        const doId = c.env.JOB_MANAGER.idFromName(jobId);
-        const doStub = c.env.JOB_MANAGER.get(doId);
-        await doStub.fetch(`https://internal/update/${jobId}`, {
-            method: 'POST',
-            body: JSON.stringify({
-                status: 'pending',
-                progress: 0,
-                message: 'Job queued',
-            }),
-        });
 
         return c.json({
             jobId,
@@ -106,18 +94,6 @@ api.post('/generate', async (c) => {
         const containerManager = new ContainerManager(c.env);
         c.executionCtx.waitUntil(containerManager.startContainer());
 
-        // Durable Objectsにジョブステータスを初期化
-        const doId = c.env.JOB_MANAGER.idFromName(jobId);
-        const doStub = c.env.JOB_MANAGER.get(doId);
-        await doStub.fetch(`https://internal/update/${jobId}`, {
-            method: 'POST',
-            body: JSON.stringify({
-                status: 'pending',
-                progress: 0,
-                message: 'Job queued',
-            }),
-        });
-
         return c.json({
             jobId,
             slidesCount: slides.length,
@@ -135,21 +111,55 @@ api.post('/generate', async (c) => {
 api.get('/jobs/:id', async (c) => {
     try {
         const jobId = c.req.param('id');
+        const queue = new JobQueue(c.env);
+        const status = await queue.getJobInfo(jobId);
 
-        // Durable Objectsからステータス取得
-        const doId = c.env.JOB_MANAGER.idFromName(jobId);
-        const doStub = c.env.JOB_MANAGER.get(doId);
-        const response = await doStub.fetch(`https://internal/jobs/${jobId}`);
-
-        if (!response.ok) {
+        if (!status) {
             return c.json({ error: 'Job not found' }, 404);
         }
 
-        const status = await response.json();
+        return c.json(status);
         return c.json(status);
     } catch (error) {
         console.error('Job status error:', error);
         return c.json({ error: 'Failed to get job status' }, 500);
+    }
+});
+
+/**
+ * [Internal] 次のジョブを取得 (コンテナ用)
+ */
+api.get('/internal/queue/next', async (c) => {
+    try {
+        const queue = new JobQueue(c.env);
+        const job = await queue.getJob();
+
+        if (!job) {
+            return c.body(null, 204); // No Content
+        }
+
+        return c.json(job);
+    } catch (error) {
+        console.error('Queue error:', error);
+        return c.json({ error: 'Failed to get next job' }, 500);
+    }
+});
+
+/**
+ * [Internal] ジョブステータス更新 (コンテナ用)
+ */
+api.post('/internal/jobs/:id/status', async (c) => {
+    try {
+        const jobId = c.req.param('id');
+        const { status, ...data } = await c.req.json();
+
+        const queue = new JobQueue(c.env);
+        await queue.updateJobStatus(jobId, status, data);
+
+        return c.json({ success: true });
+    } catch (error) {
+        console.error('Update status error:', error);
+        return c.json({ error: 'Failed to update status' }, 500);
     }
 });
 

@@ -36,6 +36,17 @@ export class JobManager implements DurableObject {
             return this.updateJobStatus(jobId, data);
         }
 
+        // ジョブキュー追加
+        if (url.pathname === '/queue/add') {
+            const job = await request.json();
+            return this.enqueueJob(job);
+        }
+
+        // 次のジョブ取得
+        if (url.pathname === '/queue/next') {
+            return this.dequeueJob();
+        }
+
         return new Response('Not found', { status: 404 });
     }
 
@@ -173,6 +184,64 @@ export class JobManager implements DurableObject {
         });
 
         return new Response(JSON.stringify({ success: true }), {
+            headers: { 'Content-Type': 'application/json' },
+        });
+    }
+
+    /**
+     * ジョブをキューに追加
+     */
+    private async enqueueJob(job: any): Promise<Response> {
+        const { jobId } = job;
+
+        // ジョブデータを保存
+        await this.state.storage.put(`job:${jobId}`, {
+            ...job,
+            status: 'pending',
+            createdAt: new Date().toISOString(),
+        });
+
+        // キューリストに追加
+        let queue = await this.state.storage.get<string[]>('queue') || [];
+        if (!queue.includes(jobId)) {
+            queue.push(jobId);
+            await this.state.storage.put('queue', queue);
+        }
+
+        console.log(`Job enqueued: ${jobId}, Queue length: ${queue.length}`);
+
+        return new Response(JSON.stringify({ success: true }), {
+            headers: { 'Content-Type': 'application/json' },
+        });
+    }
+
+    /**
+     * 次のジョブを取得 (Dequeue)
+     */
+    private async dequeueJob(): Promise<Response> {
+        let queue = await this.state.storage.get<string[]>('queue') || [];
+
+        if (queue.length === 0) {
+            return new Response(null, { status: 204 }); // No Content
+        }
+
+        const jobId = queue.shift(); // 先頭から取得
+        await this.state.storage.put('queue', queue);
+
+        if (!jobId) {
+            return new Response(null, { status: 204 });
+        }
+
+        const job = await this.state.storage.get(`job:${jobId}`);
+
+        if (!job) {
+            // データがない場合は次へ (再帰的だが、通常はありえない)
+            return this.dequeueJob();
+        }
+
+        console.log(`Job dequeued: ${jobId}, Remaining: ${queue.length}`);
+
+        return new Response(JSON.stringify(job), {
             headers: { 'Content-Type': 'application/json' },
         });
     }
