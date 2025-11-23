@@ -20,6 +20,9 @@ importers:
       html-to-image:
         specifier: ^1.11.13
         version: 1.11.13
+      sherpa-onnx:
+        specifier: ^1.12.17
+        version: 1.12.17
       socket.io-client:
         specifier: ^4.8.1
         version: 4.8.1
@@ -1074,6 +1077,9 @@ packages:
   shebang-regex@3.0.0:
     resolution: {integrity: sha512-7++dFhtcx3353uBaq8DDR4NuxBetBzC7ZQOhmTQInHEd6bSrXdiEyzCvG07Z44UYdLShWUyXt5M/yhz8ekcb1A==}
     engines: {node: '>=8'}
+
+  sherpa-onnx@1.12.17:
+    resolution: {integrity: sha512-5GToCObM8DV7+2y0N8y9qPPQIyutDhskiw5XmlEjAnUCDi6DMQpFsTofiWxlR0sjOrRH+GzAHyBX9Ca93tmtoA==}
 
   siginfo@2.0.0:
     resolution: {integrity: sha512-ybx0WO1/8bSBLEWXZvEd7gMW3Sn3JFlW3TvX1nREbDLRNQNaeNN8WK0meBwPdAaOI7TtRRRJn/Es1zhrrCHu7g==}
@@ -2341,6 +2347,8 @@ snapshots:
       shebang-regex: 3.0.0
 
   shebang-regex@3.0.0: {}
+
+  sherpa-onnx@1.12.17: {}
 
   siginfo@2.0.0: {}
 

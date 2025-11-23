@@ -6,6 +6,7 @@ export class BrowserVideoGenerator {
     private ffmpeg: FFmpeg;
     private loaded = false;
     private slideRenderer: SlideRenderer;
+    private logs: string[] = [];
 
     constructor() {
         this.ffmpeg = new FFmpeg();
@@ -14,6 +15,8 @@ export class BrowserVideoGenerator {
         // ログを有効化
         this.ffmpeg.on('log', ({ message }) => {
             console.log('[FFmpeg]', message);
+            this.logs.push(message);
+            if (this.logs.length > 100) this.logs.shift(); // Keep last 100 lines
         });
 
         this.ffmpeg.on('progress', ({ progress, time }) => {
@@ -42,6 +45,7 @@ export class BrowserVideoGenerator {
         if (!this.loaded) await this.load();
 
         const videoFiles: string[] = [];
+        this.logs = []; // Reset logs for new generation
 
         for (let i = 0; i < slides.length; i++) {
             const slide = slides[i];
@@ -64,10 +68,16 @@ export class BrowserVideoGenerator {
 
             if (audioBlob) {
                 console.log('[Audio] Processing audio blob, type:', audioBlob.type, 'size:', audioBlob.size);
-                // 音声タイプを検出
-                const ext = audioBlob.type.includes('webm') ? 'webm' : 'wav';
-                audioFile = `${slide.id}.${ext}`;
-                await this.ffmpeg.writeFile(audioFile, await fetchFile(audioBlob));
+
+                // WAVヘッダーのみ（44バイト）または空の場合は無視する
+                if (audioBlob.size <= 44) {
+                    console.warn('[Audio] Audio blob is too small (likely header only), ignoring.');
+                } else {
+                    // 音声タイプを検出
+                    const ext = audioBlob.type.includes('webm') ? 'webm' : 'wav';
+                    audioFile = `${slide.id}.${ext}`;
+                    await this.ffmpeg.writeFile(audioFile, await fetchFile(audioBlob));
+                }
             }
 
             // 3. このスライドの動画を作成
@@ -80,22 +90,52 @@ export class BrowserVideoGenerator {
 
             if (audioFile) {
                 args.push('-i', audioFile);
+                // 音声エンコーディング設定を統一
                 args.push('-c:a', 'aac');
+                args.push('-ac', '1'); // モノラル
+                args.push('-ar', '44100'); // 44.1kHz
                 args.push('-shortest'); // 音声の長さに合わせて動画をカット
             } else {
+                // 音声がない場合は無音を追加してストリーム構成を統一する
+                // anullsrcを使用して無音を生成
+                args.push('-f', 'lavfi', '-i', 'anullsrc=channel_layout=mono:sample_rate=44100');
+                args.push('-c:a', 'aac');
+                args.push('-ac', '1');
+                args.push('-ar', '44100');
                 args.push('-t', '5'); // デフォルト5秒
+                args.push('-shortest'); // 最短のストリーム（この場合は指定した時間）に合わせる
             }
 
             args.push(
                 '-c:v', 'libx264',
                 '-tune', 'stillimage',
                 '-pix_fmt', 'yuv420p',
+                // 解像度を偶数にする（libx264の要件）
+                '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',
                 videoFile
             );
 
             console.log('[FFmpeg] Executing:', args.join(' '));
-            await this.ffmpeg.exec(args);
+            const ret = await this.ffmpeg.exec(args);
+            if (ret !== 0) {
+                console.error(`[FFmpeg] Failed to generate video for slide ${slide.id}, return code: ${ret}`);
+                console.error('[FFmpeg Logs]:\n' + this.logs.slice(-20).join('\n'));
+                throw new Error(`スライド ${i + 1} の動画生成に失敗しました。\nFFmpeg Error:\n${this.logs.slice(-5).join('\n')}`);
+            }
+
+            // ファイルが生成されたか確認
+            try {
+                await this.ffmpeg.readFile(videoFile);
+            } catch (e) {
+                console.error(`[FFmpeg] Output file ${videoFile} was not created.`);
+                throw new Error(`スライド ${i + 1} の動画ファイル生成に失敗しました。`);
+            }
+
             videoFiles.push(videoFile);
+        }
+
+        if (videoFiles.length === 0) {
+            throw new Error('生成された動画ファイルがありません。');
         }
 
         // 4. 動画を結合
@@ -106,16 +146,20 @@ export class BrowserVideoGenerator {
         await this.ffmpeg.writeFile(listFile, fileListContent);
 
         const finalFile = 'output.mp4';
-        try {
-            await this.ffmpeg.exec([
-                '-f', 'concat',
-                '-safe', '0',
-                '-i', listFile,
-                '-c', 'copy',
-                finalFile
-            ]);
-        } catch (e) {
-            console.warn('[FFmpeg] Exec error (might be false positive Aborted):', e);
+        console.log('[FFmpeg] Concatenating files...');
+
+        const concatRet = await this.ffmpeg.exec([
+            '-f', 'concat',
+            '-safe', '0',
+            '-i', listFile,
+            '-c', 'copy',
+            finalFile
+        ]);
+
+        if (concatRet !== 0) {
+            console.error(`[FFmpeg] Concatenation failed with return code: ${concatRet}`);
+            console.error('[FFmpeg Logs]:\n' + this.logs.slice(-20).join('\n'));
+            throw new Error(`動画の結合に失敗しました。\nFFmpeg Error:\n${this.logs.slice(-5).join('\n')}`);
         }
 
         // 5. 結果を読み込み

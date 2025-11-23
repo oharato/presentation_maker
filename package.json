@@ -15,7 +15,8 @@
     "build:web": "cd web && pnpm build",
     "redis:start": "wsl docker compose up -d",
     "redis:stop": "wsl docker compose down",
-    "redis:logs": "wsl docker compose logs -f redis"
+    "redis:logs": "wsl docker compose logs -f redis",
+    "download:sherpa-onnx": "node scripts/download-sherpa-onnx.js"
   },
   "keywords": [],
   "author": "",
