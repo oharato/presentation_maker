@@ -60,7 +60,7 @@
                     <button 
                         @click="loadSherpa" 
                         :disabled="isSherpaReady || isSherpaLoading"
-                        class="btn-secondary"
+                        :class="isSherpaReady ? 'btn-secondary' : 'btn-load-highlight'"
                     >
                         {{ isSherpaReady ? 'Sherpa-onnx ロード済み' : (isSherpaLoading ? 'ロード中...' : 'Sherpa-onnx をロード') }}
                     </button>
@@ -75,7 +75,7 @@
                     <button 
                         @click="loadTransformers" 
                         :disabled="isTransformersReady || isTransformersLoading"
-                        class="btn-secondary"
+                        :class="isTransformersReady ? 'btn-secondary' : 'btn-load-highlight'"
                     >
                         {{ isTransformersReady ? 'Transformers.js ロード済み' : (isTransformersLoading ? 'ロード中...' : 'Transformers.js をロード') }}
                     </button>
@@ -138,7 +138,7 @@
       </section>
 
       <!-- Video Player Section -->
-      <section v-if="videoUrl" class="video-section">
+      <section v-if="videoUrl" class="video-section" ref="videoSection">
         <h2>🎥 生成された動画</h2>
         <video :src="videoUrl" controls class="video-player"></video>
         <a :href="videoUrl" download class="btn-primary">ダウンロード</a>
@@ -189,6 +189,8 @@ const isTransformersLoading = ref(false);
 const isTransformersReady = ref(false);
 const transformersError = ref<string | null>(null);
 
+const videoSection = ref<HTMLElement | null>(null);
+
 let socket: Socket | null = null;
 
 // データ永続化
@@ -208,6 +210,11 @@ onMounted(() => {
     isGenerating.value = false;
     isUploading.value = false;
     videoUrl.value = API_URL + data.videoUrl;
+    
+    // 動画セクションまでスクロール
+    setTimeout(() => {
+      videoSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
   });
   
   socket.on('job:failed', (data: { jobId: string; error: string }) => {
@@ -426,6 +433,12 @@ async function generateVideo() {
         videoUrl.value = window.URL.createObjectURL(videoBlob);
         currentJob.value = null;
         isGenerating.value = false;
+        
+        // 動画セクションまでスクロール
+        setTimeout(() => {
+          videoSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 100);
+        
         return;
     }
 
@@ -708,5 +721,28 @@ button:disabled {
     padding: 8px;
     background-color: #ffebee;
     border-radius: 4px;
+}
+
+.btn-load-highlight {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    font-weight: bold;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+    animation: pulse 2s ease-in-out infinite;
+}
+
+.btn-load-highlight:hover:not(:disabled) {
+    background: linear-gradient(135deg, #5568d3 0%, #653a8b 100%);
+    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+    transform: translateY(-2px);
+}
+
+@keyframes pulse {
+    0%, 100% {
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+    }
+    50% {
+        box-shadow: 0 4px 25px rgba(102, 126, 234, 0.7);
+    }
 }
 </style>
