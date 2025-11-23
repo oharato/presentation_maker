@@ -44,7 +44,7 @@ class_name = "JobManager"
 
 # 本番環境
 [env.production]
-name = "presentation-maker-api-production"
+name = "presentaion-maker"
 vars = { ENVIRONMENT = "production" }
 [[env.production.routes]]
 pattern = "presentation-maker.ohchans.com/api/*"
@@ -58,6 +58,10 @@ id = "2f2a03c8da9f471c867383b2dbb1ceca"
 [[env.production.durable_objects.bindings]]
 name = "PRESENTATION_MAKER_JOB_MANAGER"
 class_name = "JobManager"
+
+# Cloudflare Pages 設定
+[pages]
+dir = "web/dist"
 
 # リソース制限
 [limits]
