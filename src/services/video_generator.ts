@@ -1,90 +1,125 @@
-import ffmpeg from 'fluent-ffmpeg';
+import { spawn } from 'child_process';
+import { promisify } from 'util';
+import { exec } from 'child_process';
 import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
 import ffprobeInstaller from '@ffprobe-installer/ffprobe';
 
-ffmpeg.setFfmpegPath(ffmpegInstaller.path);
-ffmpeg.setFfprobePath(ffprobeInstaller.path);
+const execAsync = promisify(exec);
+
+const FFMPEG_PATH = ffmpegInstaller.path;
+const FFPROBE_PATH = ffprobeInstaller.path;
 
 export class VideoGenerator {
-    // Create silent video from image
+    /**
+     * FFmpegコマンドを実行するヘルパー
+     */
+    private async runFFmpeg(args: string[]): Promise<void> {
+        return new Promise((resolve, reject) => {
+            const process = spawn(FFMPEG_PATH, args);
+
+            let stderr = '';
+
+            process.stderr.on('data', (data) => {
+                stderr += data.toString();
+            });
+
+            process.on('close', (code) => {
+                if (code === 0) {
+                    resolve();
+                } else {
+                    reject(new Error(`FFmpeg exited with code ${code}: ${stderr}`));
+                }
+            });
+
+            process.on('error', (err) => {
+                reject(err);
+            });
+        });
+    }
+
+    /**
+     * 画像から無音動画を作成
+     */
     async createSilentVideo(imagePath: string, duration: number, outputPath: string): Promise<void> {
-        return new Promise((resolve, reject) => {
-            ffmpeg(imagePath)
-                .loop(duration)
-                .fps(30)
-                .videoCodec('libx264')
-                .format('mp4')
-                .size('1920x1080')
-                .outputOptions([
-                    '-pix_fmt yuv420p', // Ensure compatibility
-                    '-t', duration.toString()
-                ])
-                .save(outputPath)
-                .on('end', () => {
-                    console.log(`Silent video generated: ${outputPath}`);
-                    resolve();
-                })
-                .on('error', (err) => {
-                    console.error('Error generating silent video:', err);
-                    reject(err);
-                });
-        });
+        const args = [
+            '-loop', '1',
+            '-i', imagePath,
+            '-c:v', 'libx264',
+            '-t', duration.toString(),
+            '-pix_fmt', 'yuv420p',
+            '-vf', 'scale=1920:1080',
+            '-r', '30',
+            '-y', // Overwrite output file
+            outputPath
+        ];
+
+        await this.runFFmpeg(args);
+        console.log(`Silent video generated: ${outputPath}`);
     }
 
-    // Merge audio and video
+    /**
+     * 音声と動画を結合
+     */
     async mergeAudioVideo(videoPath: string, audioPath: string, outputPath: string): Promise<void> {
-        return new Promise((resolve, reject) => {
-            ffmpeg()
-                .input(videoPath)
-                .input(audioPath)
-                .videoCodec('copy')
-                .audioCodec('aac')
-                .outputOptions(['-shortest'])
-                .save(outputPath)
-                .on('end', () => {
-                    console.log(`Merged video generated: ${outputPath}`);
-                    resolve();
-                })
-                .on('error', (err) => {
-                    console.error('Error merging video:', err);
-                    reject(err);
-                });
-        });
+        const args = [
+            '-i', videoPath,
+            '-i', audioPath,
+            '-c:v', 'copy',
+            '-c:a', 'aac',
+            '-shortest',
+            '-y',
+            outputPath
+        ];
+
+        await this.runFFmpeg(args);
+        console.log(`Merged video generated: ${outputPath}`);
     }
 
-    // Helper to get audio duration
+    /**
+     * 音声の長さを取得
+     */
     async getAudioDuration(audioPath: string): Promise<number> {
-        return new Promise((resolve, reject) => {
-            ffmpeg.ffprobe(audioPath, (err, metadata) => {
-                if (err) return reject(err);
-                resolve(metadata.format.duration || 0);
-            });
-        });
+        const { stdout } = await execAsync(
+            `"${FFPROBE_PATH}" -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${audioPath}"`
+        );
+
+        return parseFloat(stdout.trim());
     }
 
-    // Concatenate multiple videos
+    /**
+     * 複数の動画を結合
+     */
     async concatVideos(videoPaths: string[], outputPath: string): Promise<void> {
-        return new Promise((resolve, reject) => {
-            if (videoPaths.length === 0) {
-                return resolve();
+        if (videoPaths.length === 0) {
+            return;
+        }
+
+        // 一時的なファイルリストを作成
+        const fs = require('fs');
+        const path = require('path');
+        const tmpDir = require('os').tmpdir();
+        const listFile = path.join(tmpDir, `concat_${Date.now()}.txt`);
+
+        const fileList = videoPaths.map(p => `file '${p.replace(/'/g, "'\\''")}'`).join('\n');
+        fs.writeFileSync(listFile, fileList);
+
+        try {
+            const args = [
+                '-f', 'concat',
+                '-safe', '0',
+                '-i', listFile,
+                '-c', 'copy',
+                '-y',
+                outputPath
+            ];
+
+            await this.runFFmpeg(args);
+            console.log(`Final merged video generated: ${outputPath}`);
+        } finally {
+            // クリーンアップ
+            if (fs.existsSync(listFile)) {
+                fs.unlinkSync(listFile);
             }
-
-            const command = ffmpeg();
-
-            videoPaths.forEach(path => {
-                command.input(path);
-            });
-
-            command
-                .on('end', () => {
-                    console.log(`Final merged video generated: ${outputPath}`);
-                    resolve();
-                })
-                .on('error', (err) => {
-                    console.error('Error concatenating videos:', err);
-                    reject(err);
-                })
-                .mergeToFile(outputPath, require('os').tmpdir());
-        });
+        }
     }
 }

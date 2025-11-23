@@ -2,12 +2,10 @@ import axios from 'axios';
 import fs from 'fs-extra';
 import path from 'path';
 import os from 'os';
-import ffmpeg from 'fluent-ffmpeg';
+import { spawn } from 'child_process';
 import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
-import ffprobeInstaller from '@ffprobe-installer/ffprobe';
 
-ffmpeg.setFfmpegPath(ffmpegInstaller.path);
-ffmpeg.setFfprobePath(ffprobeInstaller.path);
+const FFMPEG_PATH = ffmpegInstaller.path;
 
 const PAUSE_PATTERN = /\[pause:(\d+(?:\.\d+)?)\]/;
 const DEFAULT_SAMPLE_RATE = 24000;
@@ -158,40 +156,80 @@ export class VoicevoxService {
 
     private async generateSilence(duration: number, outputPath: string): Promise<void> {
         return new Promise((resolve, reject) => {
-            ffmpeg()
-                .input('anullsrc')
-                .inputFormat('lavfi')
-                .audioCodec('pcm_s16le')
-                .audioChannels(DEFAULT_CHANNELS)
-                .audioFrequency(DEFAULT_SAMPLE_RATE)
-                .outputOptions(['-t', duration.toString()])
-                .save(outputPath)
-                .on('end', () => {
+            const args = [
+                '-f', 'lavfi',
+                '-i', 'anullsrc',
+                '-ac', DEFAULT_CHANNELS.toString(),
+                '-ar', DEFAULT_SAMPLE_RATE.toString(),
+                '-t', duration.toString(),
+                '-acodec', 'pcm_s16le',
+                '-y',
+                outputPath
+            ];
+
+            const process = spawn(FFMPEG_PATH, args);
+            let stderr = '';
+
+            process.stderr.on('data', (data) => {
+                stderr += data.toString();
+            });
+
+            process.on('close', (code) => {
+                if (code === 0) {
                     console.log(`Silence generated: ${outputPath} (${duration}s)`);
                     resolve();
-                })
-                .on('error', (err) => {
-                    console.error('Error generating silence:', err);
-                    reject(err);
-                });
+                } else {
+                    console.error('Error generating silence:', stderr);
+                    reject(new Error(`FFmpeg exited with code ${code}`));
+                }
+            });
+
+            process.on('error', (err) => {
+                reject(err);
+            });
         });
     }
 
     private async concatAudio(files: string[], outputPath: string): Promise<void> {
         return new Promise((resolve, reject) => {
-            const command = ffmpeg();
-            files.forEach(file => command.input(file));
+            // 一時的なファイルリストを作成
+            const listFile = path.join(os.tmpdir(), `concat_${Date.now()}.txt`);
+            const fileList = files.map(f => `file '${f.replace(/'/g, "'\\''")}'").join('\n');
+            fs.writeFileSync(listFile, fileList);
 
-            command
-                .on('end', () => {
-                    console.log(`Concatenated audio generated: ${outputPath}`);
+            const args = [
+                '-f', 'concat',
+                '-safe', '0',
+                '-i', listFile,
+                '-c', 'copy',
+                '-y',
+                outputPath
+            ];
+
+            const process = spawn(FFMPEG_PATH, args);
+            let stderr = '';
+
+            process.stderr.on('data', (data) => {
+                stderr += data.toString();
+            });
+
+            process.on('close', (code) => {
+                // クリーンアップ
+                fs.unlinkSync(listFile).catch(() => {});
+
+                if (code === 0) {
+                    console.log(`Concatenated audio generated: ${ outputPath }`);
                     resolve();
-                })
-                .on('error', (err) => {
-                    console.error('Error concatenating audio:', err);
-                    reject(err);
-                })
-                .mergeToFile(outputPath, os.tmpdir());
+                } else {
+                    console.error('Error concatenating audio:', stderr);
+                    reject(new Error(`FFmpeg exited with code ${ code } `));
+                }
+            });
+
+            process.on('error', (err) => {
+                fs.unlinkSync(listFile).catch(() => {});
+                reject(err);
+            });
         });
     }
 }
