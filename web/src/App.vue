@@ -1,149 +1,176 @@
 <template>
-  <div class="app">
-    <header>
-      <h1>🎬 プレゼンテーション動画制作</h1>
+  <div class="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+    <!-- Header -->
+    <header class="bg-white shadow-sm border-b border-gray-200">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <h1 class="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+          🎬 プレゼンテーション動画メーカー
+        </h1>
+        <p class="mt-2 text-gray-600">スライドとトークスクリプトから、自動で動画を生成します</p>
+      </div>
     </header>
 
-    <main>
-      <!-- File Upload Section -->
-      <section class="upload-section">
-        <h2>📁 ファイルアップロード</h2>
-        <div class="upload-area">
-          <input
-            type="file"
-            ref="fileInput"
-            multiple
-            accept=".md,.txt"
-            @change="handleFileSelect"
-            webkitdirectory
-            directory
-          />
-          <button @click="triggerFileInput" class="btn-primary">
-            フォルダを選択
-          </button>
-          <p v-if="selectedFiles.length > 0">
-            {{ selectedFiles.length }} ファイルが選択されました
-          </p>
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+      
+      <!-- Audio Engine Selection -->
+      <section class="bg-white rounded-xl shadow-md p-6 border border-gray-200">
+        <h2 class="text-2xl font-bold text-gray-800 mb-4">🎙️ 音声合成エンジン</h2>
+        
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <label class="relative flex items-center p-4 border-2 rounded-lg cursor-pointer transition-all hover:shadow-md"
+                 :class="audioEngine === 'voicevox' ? 'border-blue-500 bg-blue-50' : 'border-gray-200'">
+            <input type="radio" v-model="audioEngine" value="voicevox" class="mr-3">
+            <div>
+              <div class="font-semibold text-gray-800">VOICEVOX</div>
+              <div class="text-sm text-gray-600">サーバー側で高品質な日本語音声を生成</div>
+            </div>
+          </label>
+          
+          <label class="relative flex items-center p-4 border-2 rounded-lg cursor-pointer transition-all hover:shadow-md"
+                 :class="audioEngine === 'transformers' ? 'border-blue-500 bg-blue-50' : 'border-gray-200'">
+            <input type="radio" v-model="audioEngine" value="transformers" class="mr-3">
+            <div>
+              <div class="font-semibold text-gray-800">Transformers.js</div>
+              <div class="text-sm text-gray-600">ブラウザで英語音声を生成</div>
+            </div>
+          </label>
+          
+          <label class="relative flex items-center p-4 border-2 rounded-lg cursor-pointer transition-all hover:shadow-md"
+                 :class="audioEngine === 'sherpa-onnx' ? 'border-blue-500 bg-blue-50' : 'border-gray-200'">
+            <input type="radio" v-model="audioEngine" value="sherpa-onnx" class="mr-3">
+            <div>
+              <div class="font-semibold text-gray-800">Sherpa-onnx</div>
+              <div class="text-sm text-gray-600">ブラウザで日本語音声を生成（WASM）</div>
+            </div>
+          </label>
         </div>
-        <button
-          @click="uploadFiles"
-          :disabled="selectedFiles.length === 0 || isUploading"
-          class="btn-success"
-        >
-          {{ isUploading ? 'アップロード中...' : 'アップロードして動画生成' }}
-        </button>
+
+        <!-- Sherpa-onnx Controls -->
+        <div v-if="audioEngine === 'sherpa-onnx'" class="bg-purple-50 border border-purple-200 rounded-lg p-4">
+          <div class="flex items-center gap-4">
+            <button 
+              @click="loadSherpa" 
+              :disabled="isSherpaReady || isSherpaLoading"
+              :class="isSherpaReady ? 'bg-gray-400' : 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 shadow-lg'"
+              class="px-6 py-3 text-white font-semibold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {{ isSherpaReady ? '✅ ロード完了' : (isSherpaLoading ? '⏳ ロード中...' : '📥 Sherpa-onnx をロード') }}
+            </button>
+            <span v-if="isSherpaReady" class="text-green-600 font-semibold">準備完了</span>
+          </div>
+          <p v-if="sherpaError" class="mt-3 text-red-600 bg-red-50 p-3 rounded-lg">{{ sherpaError }}</p>
+          <p class="mt-3 text-sm text-gray-600">※ 初回ロード時にモデルをダウンロードします（約50MB）</p>
+        </div>
+
+        <!-- Transformers.js Controls -->
+        <div v-if="audioEngine === 'transformers'" class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div class="flex items-center gap-4">
+            <button 
+              @click="loadTransformers" 
+              :disabled="isTransformersReady || isTransformersLoading"
+              :class="isTransformersReady ? 'bg-gray-400' : 'bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 shadow-lg'"
+              class="px-6 py-3 text-white font-semibold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {{ isTransformersReady ? '✅ ロード完了' : (isTransformersLoading ? '⏳ ロード中...' : '📥 Transformers.js をロード') }}
+            </button>
+            <span v-if="isTransformersReady" class="text-green-600 font-semibold">準備完了</span>
+          </div>
+          <p v-if="transformersError" class="mt-3 text-red-600 bg-red-50 p-3 rounded-lg">{{ transformersError }}</p>
+          <p class="mt-3 text-sm text-gray-600">※ 初回ロード時にモデルをダウンロードします（約100-200MB）</p>
+          <p class="mt-1 text-sm text-gray-600">※ 英語のみ対応（SpeechT5モデル）</p>
+        </div>
+
+        <div v-if="audioEngine === 'transformers' || audioEngine === 'sherpa-onnx'" class="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <p class="text-sm text-yellow-800">💡 ブラウザ生成モード: FFmpeg.wasmを使用してブラウザ上で動画を生成します</p>
+        </div>
       </section>
 
-      <!-- Manual Input Section -->
-      <section class="manual-section">
-        <h2>✏️ 手動入力</h2>
+      <!-- Slides Editor -->
+      <section class="bg-white rounded-xl shadow-md p-6 border border-gray-200">
+        <h2 class="text-2xl font-bold text-gray-800 mb-4">✏️ スライド編集</h2>
         
-        <div class="audio-settings">
-            <h3>音声合成エンジン</h3>
-            <div class="audio-engine-selector">
-                <label>
-                    <input type="radio" v-model="audioEngine" value="voicevox">
-                    VOICEVOX (サーバー)
-                </label>
-                <label>
-                    <input type="radio" v-model="audioEngine" value="transformers">
-                    Transformers.js (ブラウザ)
-                </label>
-                <label>
-                    <input type="radio" v-model="audioEngine" value="sherpa-onnx">
-                    Sherpa-onnx (ブラウザWasm)
-                </label>
+        <div class="space-y-4">
+          <div v-for="(slide, index) in slides" :key="slide.id" 
+               class="bg-gray-50 rounded-lg p-5 border border-gray-200 hover:shadow-md transition-shadow">
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-lg font-bold text-blue-600">スライド {{ index + 1 }}</span>
+              <button @click="removeSlide(index)" 
+                      class="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors">
+                🗑️ 削除
+              </button>
             </div>
             
-            <div v-if="audioEngine === 'sherpa-onnx'" class="sherpa-controls">
-                <div class="status-row">
-                    <button 
-                        @click="loadSherpa" 
-                        :disabled="isSherpaReady || isSherpaLoading"
-                        :class="isSherpaReady ? 'btn-secondary' : 'btn-load-highlight'"
-                    >
-                        {{ isSherpaReady ? 'Sherpa-onnx ロード済み' : (isSherpaLoading ? 'ロード中...' : 'Sherpa-onnx をロード') }}
-                    </button>
-                    <span v-if="isSherpaReady" class="status-success">✅ 準備完了</span>
-                </div>
-                <p v-if="sherpaError" class="status-error">{{ sherpaError }}</p>
-                <p class="note">※ 初回ロード時にモデルのダウンロードが発生します (約50MB)</p>
-            </div>
-
-            <div v-if="audioEngine === 'transformers'" class="sherpa-controls">
-                <div class="status-row">
-                    <button 
-                        @click="loadTransformers" 
-                        :disabled="isTransformersReady || isTransformersLoading"
-                        :class="isTransformersReady ? 'btn-secondary' : 'btn-load-highlight'"
-                    >
-                        {{ isTransformersReady ? 'Transformers.js ロード済み' : (isTransformersLoading ? 'ロード中...' : 'Transformers.js をロード') }}
-                    </button>
-                    <span v-if="isTransformersReady" class="status-success">✅ 準備完了</span>
-                </div>
-                <p v-if="transformersError" class="status-error">{{ transformersError }}</p>
-                <p class="note">※ 初回ロード時にモデルのダウンロードが発生します (約100-200MB)</p>
-                <p class="note">※ 英語のみ対応 (SpeechT5モデル)</p>
-            </div>
-            
-            <div v-if="audioEngine === 'transformers' || audioEngine === 'sherpa-onnx'" class="note-box">
-                <p>※ ブラウザ生成モード: FFmpeg.wasmを使用してブラウザ上で動画を生成します。</p>
-            </div>
-        </div>
-
-        <div class="slides-container">
-          <div v-for="(slide, index) in slides" :key="slide.id" class="slide-row">
-            <div class="slide-number">{{ index + 1 }}</div>
-            <div class="slide-editors">
-              <div class="editor-column">
-                <label>スライド (Markdown)</label>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">スライド内容（Markdown）</label>
                 <textarea
                   v-model="slide.markdown"
                   placeholder="# タイトル&#10;&#10;- ポイント1&#10;- ポイント2"
                   rows="10"
+                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
                 ></textarea>
               </div>
-              <div class="editor-column">
-                <label>トークスクリプト</label>
+              
+              <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">トークスクリプト</label>
                 <textarea
                   v-model="slide.script"
                   placeholder="こんにちは。[pause:1.0]今日は..."
                   rows="10"
+                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                 ></textarea>
               </div>
             </div>
-            <button @click="removeSlide(index)" class="btn-danger">削除</button>
           </div>
         </div>
-        <div class="controls-row">
-            <button @click="addSlide" class="btn-secondary">+ スライドを追加</button>
-            <button @click="clearSlides" class="btn-danger">内容をクリア</button>
+
+        <div class="flex gap-3 mt-6">
+          <button @click="addSlide" 
+                  class="px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg transition-colors shadow-md">
+            ➕ スライドを追加
+          </button>
+          <button @click="clearSlides" 
+                  class="px-6 py-3 bg-gray-500 hover:bg-gray-600 text-white font-semibold rounded-lg transition-colors">
+            🗑️ すべてクリア
+          </button>
         </div>
+
         <button
           @click="generateVideo"
           :disabled="slides.length === 0 || isGenerating"
-          class="btn-success"
+          class="mt-6 w-full px-8 py-4 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white text-lg font-bold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
         >
-          {{ isGenerating ? '生成中...' : '動画を生成' }}
+          {{ isGenerating ? '⏳ 生成中...' : '🎬 動画を生成' }}
         </button>
       </section>
 
       <!-- Progress Section -->
-      <section v-if="currentJob" class="progress-section">
-        <h2>⏳ 生成進捗</h2>
-        <div class="progress-bar">
-          <div class="progress-fill" :style="{ width: currentJob.progress + '%' }"></div>
+      <section v-if="currentJob" class="bg-white rounded-xl shadow-md p-6 border border-gray-200">
+        <h2 class="text-2xl font-bold text-gray-800 mb-4">⏳ 生成進捗</h2>
+        <div class="w-full bg-gray-200 rounded-full h-4 overflow-hidden">
+          <div class="bg-gradient-to-r from-blue-500 to-purple-500 h-4 rounded-full transition-all duration-300" 
+               :style="{ width: currentJob.progress + '%' }"></div>
         </div>
-        <p>{{ currentJob.message }} ({{ currentJob.progress }}%)</p>
+        <p class="mt-3 text-gray-700 font-medium">{{ currentJob.message }} ({{ currentJob.progress }}%)</p>
       </section>
 
       <!-- Video Player Section -->
-      <section v-if="videoUrl" class="video-section" ref="videoSection">
-        <h2>🎥 生成された動画</h2>
-        <video :src="videoUrl" controls class="video-player"></video>
-        <a :href="videoUrl" download class="btn-primary">ダウンロード</a>
+      <section v-if="videoUrl" class="bg-white rounded-xl shadow-md p-6 border border-gray-200" ref="videoSection">
+        <h2 class="text-2xl font-bold text-gray-800 mb-4">🎥 生成された動画</h2>
+        <video :src="videoUrl" controls class="w-full max-w-4xl mx-auto rounded-lg shadow-lg"></video>
+        <div class="mt-6 text-center">
+          <a :href="videoUrl" download 
+             class="inline-block px-8 py-3 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg transition-colors shadow-md">
+            📥 ダウンロード
+          </a>
+        </div>
       </section>
     </main>
+
+    <!-- Footer -->
+    <footer class="mt-12 py-6 text-center text-gray-600 text-sm">
+      <p>プレゼンテーション動画メーカー - Powered by VOICEVOX, Sherpa-onnx, Transformers.js</p>
+    </footer>
   </div>
 </template>
 
@@ -170,15 +197,11 @@ const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3001';
 const STORAGE_KEY = 'presentation_maker_slides';
 
 const slides = ref<Slide[]>([]);
-const selectedFiles = ref<File[]>([]);
-const fileInput = ref<HTMLInputElement | null>(null);
-const isUploading = ref(false);
 const isGenerating = ref(false);
 const currentJob = ref<JobProgress | null>(null);
 const videoUrl = ref<string | null>(null);
 
 const audioEngine = ref<AudioEngine>('voicevox');
-// サービスはシングルトンとしてインポート
 const browserVideoGenerator = new BrowserVideoGenerator();
 
 const isSherpaLoading = ref(false);
@@ -208,10 +231,8 @@ onMounted(() => {
   socket.on('job:completed', (data: { jobId: string; videoUrl: string }) => {
     currentJob.value = null;
     isGenerating.value = false;
-    isUploading.value = false;
     videoUrl.value = API_URL + data.videoUrl;
     
-    // 動画セクションまでスクロール
     setTimeout(() => {
       videoSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 100);
@@ -220,11 +241,9 @@ onMounted(() => {
   socket.on('job:failed', (data: { jobId: string; error: string }) => {
     currentJob.value = null;
     isGenerating.value = false;
-    isUploading.value = false;
     alert(`エラー: ${data.error}`);
   });
   
-  // ローカルストレージから読み込み、または初期スライドを追加
   const saved = localStorage.getItem(STORAGE_KEY);
   if (saved) {
       try {
@@ -237,7 +256,6 @@ onMounted(() => {
       addSlide();
   }
 
-  // サービスのステータスを確認
   if (transformersService.isReady()) {
       isTransformersReady.value = true;
   }
@@ -245,11 +263,9 @@ onMounted(() => {
       isSherpaReady.value = true;
   }
   
-  // ブラウザ生成モードの場合はURLにクエリパラメータを追加
   updateBrowserMode();
 });
 
-// audioEngineが変更されたときにブラウザモードを更新
 watch(audioEngine, () => {
   updateBrowserMode();
 });
@@ -264,7 +280,6 @@ function updateBrowserMode() {
     url.searchParams.delete('browserMode');
   }
   
-  // URLを更新（リロードなし）
   window.history.replaceState({}, '', url.toString());
 }
 
@@ -318,54 +333,8 @@ function clearSlides() {
         localStorage.removeItem(STORAGE_KEY);
         currentJob.value = null;
         videoUrl.value = null;
-        addSlide(); // 空のスライドを1つ追加
+        addSlide();
     }
-}
-
-function triggerFileInput() {
-  fileInput.value?.click();
-}
-
-function handleFileSelect(event: Event) {
-  const target = event.target as HTMLInputElement;
-  if (target.files) {
-    selectedFiles.value = Array.from(target.files);
-  }
-}
-
-async function uploadFiles() {
-  if (selectedFiles.value.length === 0) return;
-  
-  isUploading.value = true;
-  videoUrl.value = null;
-  
-  const formData = new FormData();
-  selectedFiles.value.forEach((file) => {
-    formData.append('files', file);
-  });
-  
-  try {
-    const response = await fetch(`${API_URL}/api/upload-folder`, {
-      method: 'POST',
-      body: formData,
-    });
-    
-    const data = await response.json();
-    
-    if (response.ok) {
-      socket?.emit('join:job', { jobId: data.jobId });
-      currentJob.value = {
-        jobId: data.jobId,
-        progress: 0,
-        message: 'キューに追加されました',
-      };
-    } else {
-      throw new Error(data.error);
-    }
-  } catch (error) {
-    isUploading.value = false;
-    alert(`アップロードエラー: ${error}`);
-  }
 }
 
 async function generateVideo() {
@@ -375,7 +344,6 @@ async function generateVideo() {
   videoUrl.value = null;
   
   try {
-    // Transformers と Sherpa のブラウザ側生成
     if (audioEngine.value === 'transformers' || audioEngine.value === 'sherpa-onnx') {
         const audioBlobs: Record<string, Blob> = {};
         
@@ -415,7 +383,6 @@ async function generateVideo() {
             }
         }
 
-        // FFmpeg生成を開始
         currentJob.value = { jobId: 'browser-gen', progress: 30, message: 'ブラウザで動画を生成中 (FFmpeg.wasm)...' };
         
         const videoBlob = await browserVideoGenerator.generateVideo(
@@ -434,7 +401,6 @@ async function generateVideo() {
         currentJob.value = null;
         isGenerating.value = false;
         
-        // 動画セクションまでスクロール
         setTimeout(() => {
           videoSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }, 100);
@@ -442,7 +408,6 @@ async function generateVideo() {
         return;
     }
 
-    // サーバー側生成 (VOICEVOX)
     const response = await fetch(`${API_URL}/api/generate`, {
       method: 'POST',
       headers: {
@@ -471,278 +436,3 @@ async function generateVideo() {
   }
 }
 </script>
-
-<style scoped>
-.app {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 20px;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-}
-
-header {
-  text-align: center;
-  margin-bottom: 40px;
-}
-
-h1 {
-  color: #333;
-  font-size: 2.5rem;
-}
-
-h2 {
-  color: #555;
-  margin-bottom: 20px;
-}
-
-section {
-  background: #f9f9f9;
-  padding: 30px;
-  border-radius: 8px;
-  margin-bottom: 30px;
-}
-
-.upload-area {
-  margin-bottom: 20px;
-}
-
-.upload-area input[type="file"] {
-  display: none;
-}
-
-.slides-container {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  margin-bottom: 20px;
-}
-
-.controls-row {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 20px;
-}
-
-.slide-row {
-  display: grid;
-  grid-template-columns: 40px 1fr auto;
-  gap: 15px;
-  align-items: start;
-  background: white;
-  padding: 20px;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.slide-number {
-  font-size: 1.5rem;
-  font-weight: bold;
-  color: #666;
-  padding-top: 10px;
-}
-
-.slide-editors {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
-}
-
-.editor-column {
-  display: flex;
-  flex-direction: column;
-}
-
-.editor-column label {
-  font-weight: bold;
-  margin-bottom: 8px;
-  color: #555;
-}
-
-textarea {
-  width: 100%;
-  padding: 12px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  font-family: 'Courier New', monospace;
-  font-size: 14px;
-  resize: vertical;
-}
-
-textarea:focus {
-  outline: none;
-  border-color: #4CAF50;
-}
-
-button {
-  padding: 12px 24px;
-  border: none;
-  border-radius: 4px;
-  font-size: 16px;
-  cursor: pointer;
-  transition: background-color 0.3s;
-}
-
-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-primary {
-  background-color: #2196F3;
-  color: white;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background-color: #1976D2;
-}
-
-.btn-secondary {
-  background-color: #9E9E9E;
-  color: white;
-}
-
-.btn-secondary:hover:not(:disabled) {
-  background-color: #757575;
-}
-
-.btn-success {
-  background-color: #4CAF50;
-  color: white;
-}
-
-.btn-success:hover:not(:disabled) {
-  background-color: #45a049;
-}
-
-.btn-danger {
-  background-color: #f44336;
-  color: white;
-  padding: 8px 16px;
-  font-size: 14px;
-}
-
-.btn-danger:hover:not(:disabled) {
-  background-color: #da190b;
-}
-
-.progress-bar {
-  width: 100%;
-  height: 30px;
-  background-color: #e0e0e0;
-  border-radius: 15px;
-  overflow: hidden;
-  margin-bottom: 10px;
-}
-
-.progress-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #4CAF50, #8BC34A);
-  transition: width 0.3s ease;
-}
-
-.video-player {
-  width: 100%;
-  max-width: 800px;
-  border-radius: 8px;
-  margin-bottom: 20px;
-}
-
-.audio-settings {
-    background: #fff;
-    padding: 20px;
-    border-radius: 8px;
-    margin-bottom: 20px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-}
-
-.audio-settings h3 {
-    margin-top: 0;
-    margin-bottom: 15px;
-    font-size: 1.1rem;
-    color: #444;
-}
-
-.radio-group {
-    display: flex;
-    gap: 20px;
-    margin-bottom: 15px;
-}
-
-.radio-group label {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    cursor: pointer;
-}
-
-.sherpa-controls {
-    margin-top: 15px;
-    padding-top: 15px;
-    border-top: 1px solid #eee;
-}
-
-.note-box {
-    margin-top: 15px;
-    padding: 10px;
-    background: #f8f9fa;
-    border-radius: 4px;
-    border-left: 4px solid #42b983;
-}
-
-.note-box p {
-    margin: 0;
-    font-size: 0.9rem;
-    color: #666;
-}
-
-.note {
-    font-size: 0.9rem;
-    color: #666;
-    margin-top: 8px;
-}
-
-.status-row {
-    display: flex;
-    align-items: center;
-    gap: 15px;
-    margin-bottom: 8px;
-}
-
-.status-success {
-    color: #4CAF50;
-    font-weight: bold;
-    font-size: 1.1rem;
-}
-
-.status-error {
-    color: #f44336;
-    font-weight: bold;
-    margin-top: 8px;
-    padding: 8px;
-    background-color: #ffebee;
-    border-radius: 4px;
-}
-
-.btn-load-highlight {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    font-weight: bold;
-    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
-    animation: pulse 2s ease-in-out infinite;
-}
-
-.btn-load-highlight:hover:not(:disabled) {
-    background: linear-gradient(135deg, #5568d3 0%, #653a8b 100%);
-    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
-    transform: translateY(-2px);
-}
-
-@keyframes pulse {
-    0%, 100% {
-        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
-    }
-    50% {
-        box-shadow: 0 4px 25px rgba(102, 126, 234, 0.7);
-    }
-}
-</style>

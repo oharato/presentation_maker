@@ -13,6 +13,7 @@
     "dev:web": "cd web && pnpm dev",
     "dev:services": "wsl docker compose up",
     "dev": "concurrently --kill-others \"pnpm dev:services\" \"pnpm dev:server\" \"pnpm dev:web\"",
+    "dev:clean": "taskkill /F /IM node.exe & timeout /t 2 /nobreak & pnpm dev",
     "build:web": "cd web && pnpm build",
     "redis:start": "wsl docker compose up -d",
     "redis:stop": "wsl docker compose down",
