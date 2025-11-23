@@ -1,0 +1,52 @@
+# Cloudflare Workers 設定ファイル
+
+name = "presentation-maker-api"
+main = "workers/src/index.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# 開発環境
+[env.development]
+name = "presentation-maker-api-dev"
+vars = { ENVIRONMENT = "development", MOCK_QUEUE = "true" }
+
+# ステージング環境
+[env.staging]
+name = "presentation-maker-api-staging"
+vars = { ENVIRONMENT = "staging" }
+
+# 本番環境
+[env.production]
+name = "presentation-maker-api-production"
+vars = { ENVIRONMENT = "production" }
+
+# R2 バケット (動画ストレージ)
+[[r2_buckets]]
+binding = "VIDEO_BUCKET"
+bucket_name = "presentation-videos"
+preview_bucket_name = "presentation-videos-preview"
+
+# Durable Objects (ジョブ管理・WebSocket)
+[[durable_objects.bindings]]
+name = "JOB_MANAGER"
+class_name = "JobManager"
+# script_name は同一Worker内の場合は不要
+
+[[migrations]]
+tag = "v1"
+new_classes = ["JobManager"]
+
+# Workers KV (キャッシュ)
+[[kv_namespaces]]
+binding = "CACHE"
+id = "your-kv-namespace-id"
+preview_id = "your-preview-kv-namespace-id"
+
+# ルート設定
+[[routes]]
+pattern = "api.your-domain.com/*"
+zone_name = "your-domain.com"
+
+# リソース制限
+[limits]
+cpu_ms = 50

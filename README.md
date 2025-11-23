@@ -250,6 +250,61 @@ pnpm store prune
 4. ブランチにプッシュ (`git push origin feature/amazing-feature`)
 5. プルリクエストを作成
 
+## Cloudflare デプロイ
+
+このアプリケーションは Cloudflare にデプロイ可能です。
+
+### 主要コンポーネント
+
+- **Cloudflare Pages**: フロントエンドホスティング
+- **Cloudflare Workers**: API Gateway
+- **Cloudflare R2**: 動画ストレージ
+- **Cloudflare Durable Objects**: ジョブ管理・WebSocket
+- **Cloudflare Container**: 動画処理ワーカー、VOICEVOX
+
+### クイックデプロイ
+
+```bash
+# 1. 依存関係インストール
+pnpm add -D @cloudflare/workers-types wrangler
+pnpm add @upstash/redis @aws-sdk/client-s3
+
+# 2. Cloudflare ログイン
+wrangler login
+
+# 3. R2 バケット作成
+wrangler r2 bucket create presentation-videos
+
+# 4. Workers KV 作成
+wrangler kv:namespace create "CACHE"
+
+# 5. シークレット設定
+wrangler secret put UPSTASH_REDIS_REST_URL
+wrangler secret put UPSTASH_REDIS_REST_TOKEN
+wrangler secret put JWT_SECRET
+
+# 6. デプロイ
+pnpm deploy:all
+```
+
+### 詳細ドキュメント
+
+- [Cloudflare デプロイ設計](docs/CLOUDFLARE_DEPLOYMENT.md)
+- [Cloudflare デプロイガイド](docs/CLOUDFLARE_DEPLOY_GUIDE.md)
+
+### コスト見積もり
+
+**オンデマンド起動 (Scale to Zero) により、大幅なコスト削減が可能です。**
+
+- **待機時間**: $0 (アイドル時は自動停止)
+- **実行時間**: 実際に動画を生成している時間のみ課金
+
+月間1,000ジョブ (1ジョブあたり平均3分) の場合:
+- コンテナ稼働時間: 50時間/月
+- コンテナコスト: 約$1.5/月 (常時起動の約$20/月から90%以上削減)
+
+詳細は [CLOUDFLARE_DEPLOYMENT.md](docs/CLOUDFLARE_DEPLOYMENT.md) を参照。
+
 ## ライセンス
 
 ISC

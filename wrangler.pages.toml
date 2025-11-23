@@ -1,0 +1,54 @@
+# Cloudflare Pages 設定ファイル
+
+name = "presentation-maker-frontend"
+compatibility_date = "2024-01-01"
+
+# ビルド設定
+[build]
+command = "cd web && pnpm install && pnpm build"
+cwd = "."
+watch_dirs = ["web/src", "web/public"]
+
+[build.upload]
+format = "directory"
+dir = "web/dist"
+
+# 環境変数 (開発)
+[env.development.vars]
+VITE_API_URL = "http://localhost:8787"
+VITE_WS_URL = "ws://localhost:8787/ws"
+
+# 環境変数 (ステージング)
+[env.staging.vars]
+VITE_API_URL = "https://api-staging.your-domain.com"
+VITE_WS_URL = "wss://api-staging.your-domain.com/ws"
+
+# 環境変数 (本番)
+[env.production.vars]
+VITE_API_URL = "https://api.your-domain.com"
+VITE_WS_URL = "wss://api.your-domain.com/ws"
+
+# カスタムドメイン
+[[routes]]
+pattern = "presentation-maker.your-domain.com"
+custom_domain = true
+
+# リダイレクト設定
+[[redirects]]
+from = "/api/*"
+to = "https://api.your-domain.com/:splat"
+status = 200
+
+# ヘッダー設定
+[[headers]]
+for = "/*"
+[headers.values]
+X-Frame-Options = "DENY"
+X-Content-Type-Options = "nosniff"
+Referrer-Policy = "strict-origin-when-cross-origin"
+Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+
+[[headers]]
+for = "/assets/*"
+[headers.values]
+Cache-Control = "public, max-age=31536000, immutable"

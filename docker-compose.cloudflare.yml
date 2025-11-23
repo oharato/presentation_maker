@@ -1,0 +1,64 @@
+# Cloudflare Container 用 Docker Compose
+
+version: '3.8'
+
+services:
+  # 動画処理ワーカー
+  video-worker:
+    build:
+      context: .
+      dockerfile: workers/container/Dockerfile
+    container_name: presentation_maker_video_worker
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - UPSTASH_REDIS_REST_URL=${UPSTASH_REDIS_REST_URL}
+      - UPSTASH_REDIS_REST_TOKEN=${UPSTASH_REDIS_REST_TOKEN}
+      - VOICEVOX_URL=http://voicevox:50021
+      - R2_ACCOUNT_ID=${R2_ACCOUNT_ID}
+      - R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID}
+      - R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY}
+      - R2_BUCKET_NAME=presentation-videos
+    depends_on:
+      - voicevox
+    networks:
+      - cloudflare-network
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+
+  # VOICEVOX 音声合成サービス
+  voicevox:
+    build:
+      context: .
+      dockerfile: workers/container/voicevox/Dockerfile
+    container_name: presentation_maker_voicevox
+    restart: unless-stopped
+    ports:
+      - "50021:50021"
+    networks:
+      - cloudflare-network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:50021/version" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
+
+networks:
+  cloudflare-network:
+    driver: bridge
