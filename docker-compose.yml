@@ -13,5 +13,12 @@ services:
       timeout: 3s
       retries: 5
 
+  voicevox:
+    image: voicevox/voicevox_engine:cpu-ubuntu20.04-latest
+    container_name: presentation_maker_voicevox
+    ports:
+      - "50021:50021"
+    tty: true
+
 volumes:
   redis_data:

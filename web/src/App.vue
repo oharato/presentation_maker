@@ -165,7 +165,7 @@ interface JobProgress {
   message: string;
 }
 
-const API_URL = import.meta.env.VITE_API_URL || '';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3001';
 const STORAGE_KEY = 'presentation_maker_slides';
 
@@ -237,7 +237,29 @@ onMounted(() => {
   if (sherpaService.isReady()) {
       isSherpaReady.value = true;
   }
+  
+  // ブラウザ生成モードの場合はURLにクエリパラメータを追加
+  updateBrowserMode();
 });
+
+// audioEngineが変更されたときにブラウザモードを更新
+watch(audioEngine, () => {
+  updateBrowserMode();
+});
+
+function updateBrowserMode() {
+  const isBrowserMode = audioEngine.value === 'sherpa-onnx' || audioEngine.value === 'transformers';
+  const url = new URL(window.location.href);
+  
+  if (isBrowserMode) {
+    url.searchParams.set('browserMode', 'true');
+  } else {
+    url.searchParams.delete('browserMode');
+  }
+  
+  // URLを更新（リロードなし）
+  window.history.replaceState({}, '', url.toString());
+}
 
 onUnmounted(() => {
   socket?.disconnect();

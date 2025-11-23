@@ -102,14 +102,20 @@ app.post('/upload-folder', async (c) => {
 
 // Create job from manual input
 app.post('/generate', async (c) => {
+    console.log('Received /generate request');
     try {
-        const { slides } = await c.req.json();
+        const body = await c.req.json();
+        console.log('Request body parsed:', body ? 'valid' : 'null');
+        const { slides } = body;
 
         if (!slides || !Array.isArray(slides) || slides.length === 0) {
+            console.warn('Invalid slides data received');
             return c.json({ error: 'Invalid slides data' }, 400);
         }
 
         const jobId = uuidv4();
+        console.log(`Created job ID: ${jobId}, adding to queue...`);
+
         const jobData: VideoJobData = {
             jobId,
             slides,
@@ -120,6 +126,8 @@ app.post('/generate', async (c) => {
             removeOnComplete: false,
             removeOnFail: false,
         });
+
+        console.log(`Job ${jobId} added to queue successfully`);
 
         return c.json({ jobId });
     } catch (error) {

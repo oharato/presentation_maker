@@ -53,26 +53,35 @@ export function setupVideoWorker(io: SocketIOServer) {
                 let audioExists = false;
 
                 if (slide.script.trim()) {
+                    console.log(`[Job ${jobId}] Generating audio for slide ${slideNum}...`);
                     await voicevox.generateAudio(slide.script, audioPath);
+                    console.log(`[Job ${jobId}] Audio generated for slide ${slideNum}`);
                     duration = await videoGenerator.getAudioDuration(audioPath);
                     audioExists = true;
                 }
 
                 // Generate slide image
+                console.log(`[Job ${jobId}] Rendering slide image for slide ${slideNum}...`);
                 await slideRenderer.renderSlide(slide.markdown, imagePath);
+                console.log(`[Job ${jobId}] Slide image rendered for slide ${slideNum}`);
 
                 // Generate silent video
+                console.log(`[Job ${jobId}] Creating silent video for slide ${slideNum}...`);
                 await videoGenerator.createSilentVideo(imagePath, duration, silentVideoPath);
+                console.log(`[Job ${jobId}] Silent video created for slide ${slideNum}`);
 
                 // Merge audio and video
                 if (audioExists) {
+                    console.log(`[Job ${jobId}] Merging audio and video for slide ${slideNum}...`);
                     await videoGenerator.mergeAudioVideo(silentVideoPath, audioPath, finalVideoPath);
+                    console.log(`[Job ${jobId}] Audio and video merged for slide ${slideNum}`);
                     generatedVideos.push(finalVideoPath);
                 }
             }
 
             // Concatenate all videos
             if (generatedVideos.length > 0) {
+                console.log(`[Job ${jobId}] Concatenating ${generatedVideos.length} videos...`);
                 io.to(jobId).emit('job:progress', {
                     jobId,
                     progress: 95,
@@ -81,6 +90,7 @@ export function setupVideoWorker(io: SocketIOServer) {
 
                 const finalPresentationPath = path.join(OUTPUT_DIR, `${jobId}_final.mp4`);
                 await videoGenerator.concatVideos(generatedVideos, finalPresentationPath);
+                console.log(`[Job ${jobId}] Final video created: ${finalPresentationPath}`);
 
                 io.to(jobId).emit('job:completed', {
                     jobId,

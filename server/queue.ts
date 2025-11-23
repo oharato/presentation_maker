@@ -12,6 +12,12 @@ const redisConfig = {
 const client = new Redis(redisConfig);
 const subscriber = new Redis(redisConfig);
 
+client.on('ready', () => console.log('Redis client connected and ready'));
+client.on('error', (err) => console.error('Redis client error:', err));
+
+subscriber.on('ready', () => console.log('Redis subscriber connected and ready'));
+subscriber.on('error', (err) => console.error('Redis subscriber error:', err));
+
 // Create Bull queue
 export const videoQueue = new Queue('video-generation', {
     createClient: (type) => {

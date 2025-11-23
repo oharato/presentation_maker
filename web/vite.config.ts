@@ -4,7 +4,25 @@ import path from 'path'
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [
+    vue(),
+    // Custom plugin to conditionally set COEP headers for browser-based video generation
+    {
+      name: 'conditional-coep-headers',
+      configureServer(server) {
+        server.middlewares.use((req, res, next) => {
+          const url = new URL(req.url || '', `http://${req.headers.host}`);
+          const browserMode = url.searchParams.get('browserMode') === 'true';
+
+          if (browserMode) {
+            res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+            res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+          }
+          next();
+        });
+      },
+    },
+  ],
   resolve: {
     alias: {
       fs: path.resolve(__dirname, 'src/mocks/node-polyfills.js'),
@@ -15,10 +33,6 @@ export default defineConfig({
     exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util']
   },
   server: {
-    headers: {
-      'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Embedder-Policy': 'require-corp',
-    },
     proxy: {
       '/api': {
         target: 'http://localhost:3000',

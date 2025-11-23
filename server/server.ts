@@ -37,8 +37,28 @@ const io = new SocketIOServer(httpServer, {
     },
 });
 
-// Serve static files
-app.use('/videos/*', serveStatic({ root: path.join(process.cwd(), 'public') }));
+// Serve static files with CORP header for videos
+app.get('/videos/:filename', async (c) => {
+    const filename = c.req.param('filename');
+    const videoPath = path.join(process.cwd(), 'public', 'videos', filename);
+
+    try {
+        const fs = await import('fs-extra');
+        const stat = await fs.stat(videoPath);
+        const fileBuffer = await fs.readFile(videoPath);
+
+        return new Response(fileBuffer, {
+            headers: {
+                'Content-Type': 'video/mp4',
+                'Content-Length': stat.size.toString(),
+                'Cross-Origin-Resource-Policy': 'cross-origin',
+                'Accept-Ranges': 'bytes',
+            },
+        });
+    } catch (error) {
+        return c.notFound();
+    }
+});
 app.use('/*', serveStatic({ root: path.join(process.cwd(), 'web', 'dist') }));
 
 // API routes
