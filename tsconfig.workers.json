@@ -30,8 +30,7 @@
     },
     "include": [
         "workers/**/*",
-        "src/**/*",
-        "node_modules/@types/**/*"
+        "src/**/*"
     ],
     "exclude": [
         "node_modules",
