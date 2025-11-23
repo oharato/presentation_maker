@@ -1,76 +1,68 @@
-import { VideoGenerator } from '../../src/services/video_generator';
-import ffmpeg from 'fluent-ffmpeg';
+/**
+ * VideoGenerator のテスト (Vitest)
+ */
 
-jest.mock('fluent-ffmpeg');
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { VideoGenerator } from '../../src/services/video_generator';
+import * as ffmpegUtils from '../../src/utils/ffmpeg';
+
+// FFmpegユーティリティをモック
+vi.mock('../../src/utils/ffmpeg');
 
 describe('VideoGenerator', () => {
-    jest.setTimeout(10000);
     let generator: VideoGenerator;
-    const mockedFfmpeg = ffmpeg as unknown as jest.Mock;
 
     beforeEach(() => {
         generator = new VideoGenerator();
-        jest.clearAllMocks();
+        vi.clearAllMocks();
+    });
 
-        // Mock ffmpeg chain
-        mockedFfmpeg.mockImplementation(() => {
-            const callbacks: { [key: string]: Function } = {};
-            const mockCmd: any = {
-                loop: jest.fn().mockReturnThis(),
-                fps: jest.fn().mockReturnThis(),
-                videoCodec: jest.fn().mockReturnThis(),
-                format: jest.fn().mockReturnThis(),
-                size: jest.fn().mockReturnThis(),
-                outputOptions: jest.fn().mockReturnThis(),
-                input: jest.fn().mockReturnThis(),
-                inputFormat: jest.fn().mockReturnThis(),
-                audioCodec: jest.fn().mockReturnThis(),
-                audioChannels: jest.fn().mockReturnThis(),
-                audioFrequency: jest.fn().mockReturnThis(),
-                on: jest.fn().mockImplementation((event, callback) => {
-                    callbacks[event] = callback;
-                    return mockCmd;
-                }),
-                save: jest.fn().mockImplementation((path) => {
-                    setTimeout(() => {
-                        if (callbacks['end']) callbacks['end']();
-                    }, 10);
-                    return mockCmd;
-                }),
-                mergeToFile: jest.fn().mockImplementation((path, tmpDir) => {
-                    setTimeout(() => {
-                        if (callbacks['end']) callbacks['end']();
-                    }, 10);
-                    return mockCmd;
-                }),
-            };
-            return mockCmd;
-        });
+    describe('createSilentVideo', () => {
+        it('should create silent video from image', async () => {
+            const mockImageToVideo = vi.spyOn(ffmpegUtils, 'imageToVideo').mockResolvedValue();
 
-        // Mock ffprobe
-        (ffmpeg.ffprobe as unknown as jest.Mock) = jest.fn((path, callback) => {
-            callback(null, { format: { duration: 10 } });
+            await generator.createSilentVideo('input.png', 5, 'output.mp4');
+
+            expect(mockImageToVideo).toHaveBeenCalledWith('input.png', 5, 'output.mp4');
         });
     });
 
-    it('should create silent video', async () => {
-        await generator.createSilentVideo('input.png', 5, 'output.mp4');
-        expect(mockedFfmpeg).toHaveBeenCalledWith('input.png');
+    describe('mergeAudioVideo', () => {
+        it('should merge audio and video files', async () => {
+            const mockMerge = vi.spyOn(ffmpegUtils, 'mergeAudioVideo').mockResolvedValue();
+
+            await generator.mergeAudioVideo('video.mp4', 'audio.wav', 'output.mp4');
+
+            expect(mockMerge).toHaveBeenCalledWith('video.mp4', 'audio.wav', 'output.mp4');
+        });
     });
 
-    it('should merge audio and video', async () => {
-        await generator.mergeAudioVideo('video.mp4', 'audio.wav', 'output.mp4');
-        expect(mockedFfmpeg).toHaveBeenCalled();
+    describe('getAudioDuration', () => {
+        it('should return audio duration', async () => {
+            const mockGetDuration = vi.spyOn(ffmpegUtils, 'getMediaDuration').mockResolvedValue(10.5);
+
+            const duration = await generator.getAudioDuration('audio.wav');
+
+            expect(duration).toBe(10.5);
+            expect(mockGetDuration).toHaveBeenCalledWith('audio.wav');
+        });
     });
 
-    it('should get audio duration', async () => {
-        const duration = await generator.getAudioDuration('audio.wav');
-        expect(duration).toBe(10);
-        expect(ffmpeg.ffprobe).toHaveBeenCalledWith('audio.wav', expect.any(Function));
-    });
+    describe('concatVideos', () => {
+        it('should concatenate multiple videos', async () => {
+            const mockConcat = vi.spyOn(ffmpegUtils, 'concatMedia').mockResolvedValue();
 
-    it('should concat videos', async () => {
-        await generator.concatVideos(['v1.mp4', 'v2.mp4'], 'output.mp4');
-        expect(mockedFfmpeg).toHaveBeenCalled();
+            await generator.concatVideos(['v1.mp4', 'v2.mp4'], 'output.mp4');
+
+            expect(mockConcat).toHaveBeenCalledWith(['v1.mp4', 'v2.mp4'], 'output.mp4');
+        });
+
+        it('should handle empty video list', async () => {
+            const mockConcat = vi.spyOn(ffmpegUtils, 'concatMedia');
+
+            await generator.concatVideos([], 'output.mp4');
+
+            expect(mockConcat).not.toHaveBeenCalled();
+        });
     });
 });

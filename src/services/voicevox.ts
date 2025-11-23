@@ -1,11 +1,14 @@
+/**
+ * VOICEVOX音声合成サービス
+ * 
+ * FFmpeg共通ユーティリティを使用してリファクタリング
+ */
+
 import axios from 'axios';
 import fs from 'fs-extra';
 import path from 'path';
 import os from 'os';
-import { spawn } from 'child_process';
-import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
-
-const FFMPEG_PATH = ffmpegInstaller.path;
+import { generateSilence, concatMedia } from '../utils/ffmpeg';
 
 const PAUSE_PATTERN = /\[pause:(\d+(?:\.\d+)?)\]/;
 const DEFAULT_SAMPLE_RATE = 24000;
@@ -85,7 +88,8 @@ export class VoicevoxService {
 
     private async finalizeAudio(filesToConcat: string[], outputPath: string): Promise<void> {
         if (filesToConcat.length > 0) {
-            await this.concatAudio(filesToConcat, outputPath);
+            await concatMedia(filesToConcat, outputPath);
+            console.log(`Concatenated audio generated: ${outputPath}`);
         } else {
             const silencePath = await this.getSilenceFile(1);
             await fs.copy(silencePath, outputPath);
@@ -109,7 +113,13 @@ export class VoicevoxService {
 
         const tempDir = os.tmpdir();
         const silencePath = path.join(tempDir, `silence_${duration}s_${Date.now()}.wav`);
-        await this.generateSilence(duration, silencePath);
+
+        await generateSilence(duration, silencePath, {
+            sampleRate: DEFAULT_SAMPLE_RATE,
+            channels: DEFAULT_CHANNELS
+        });
+
+        console.log(`Silence generated: ${silencePath} (${duration}s)`);
         this.silenceCache.set(duration, silencePath);
         return silencePath;
     }
@@ -152,84 +162,5 @@ export class VoicevoxService {
             }
         );
         return response.data;
-    }
-
-    private async generateSilence(duration: number, outputPath: string): Promise<void> {
-        return new Promise((resolve, reject) => {
-            const args = [
-                '-f', 'lavfi',
-                '-i', 'anullsrc',
-                '-ac', DEFAULT_CHANNELS.toString(),
-                '-ar', DEFAULT_SAMPLE_RATE.toString(),
-                '-t', duration.toString(),
-                '-acodec', 'pcm_s16le',
-                '-y',
-                outputPath
-            ];
-
-            const process = spawn(FFMPEG_PATH, args);
-            let stderr = '';
-
-            process.stderr.on('data', (data) => {
-                stderr += data.toString();
-            });
-
-            process.on('close', (code) => {
-                if (code === 0) {
-                    console.log(`Silence generated: ${outputPath} (${duration}s)`);
-                    resolve();
-                } else {
-                    console.error('Error generating silence:', stderr);
-                    reject(new Error(`FFmpeg exited with code ${code}`));
-                }
-            });
-
-            process.on('error', (err) => {
-                reject(err);
-            });
-        });
-    }
-
-    private async concatAudio(files: string[], outputPath: string): Promise<void> {
-        return new Promise((resolve, reject) => {
-            // 一時的なファイルリストを作成
-            const listFile = path.join(os.tmpdir(), `concat_${Date.now()}.txt`);
-            const fileList = files.map(f => `file '${f.replace(/'/g, "'\\''")}'").join('\n');
-            fs.writeFileSync(listFile, fileList);
-
-            const args = [
-                '-f', 'concat',
-                '-safe', '0',
-                '-i', listFile,
-                '-c', 'copy',
-                '-y',
-                outputPath
-            ];
-
-            const process = spawn(FFMPEG_PATH, args);
-            let stderr = '';
-
-            process.stderr.on('data', (data) => {
-                stderr += data.toString();
-            });
-
-            process.on('close', (code) => {
-                // クリーンアップ
-                fs.unlinkSync(listFile).catch(() => {});
-
-                if (code === 0) {
-                    console.log(`Concatenated audio generated: ${ outputPath }`);
-                    resolve();
-                } else {
-                    console.error('Error concatenating audio:', stderr);
-                    reject(new Error(`FFmpeg exited with code ${ code } `));
-                }
-            });
-
-            process.on('error', (err) => {
-                fs.unlinkSync(listFile).catch(() => {});
-                reject(err);
-            });
-        });
     }
 }
