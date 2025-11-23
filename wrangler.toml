@@ -1,9 +1,12 @@
-# Cloudflare Workers 設定ファイル
+# Cloudflare Workers / Pages 設定ファイル
 
 name = "presentation-maker-api"
 main = "workers/src/index.ts"
 compatibility_date = "2024-01-01"
 compatibility_flags = ["nodejs_compat"]
+
+# Cloudflare Pages 設定 (必須: トップレベルに記述)
+pages_build_output_dir = "web/dist"
 
 # マイグレーション設定（グローバル）
 [[migrations]]
@@ -58,10 +61,6 @@ id = "2f2a03c8da9f471c867383b2dbb1ceca"
 [[env.production.durable_objects.bindings]]
 name = "PRESENTATION_MAKER_JOB_MANAGER"
 class_name = "JobManager"
-
-# Cloudflare Pages 設定
-[pages]
-dir = "web/dist"
 
 # リソース制限
 [limits]
