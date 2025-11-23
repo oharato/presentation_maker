@@ -1,0 +1,2 @@
+# リダイレクト設定
+/api/*  https://presentation-maker.ohchans.com/api/:splat  200

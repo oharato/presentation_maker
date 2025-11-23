@@ -35,8 +35,12 @@ export class SherpaOnnxService implements AudioSynthesisService {
     private async loadWasmModule(): Promise<any> {
         console.log('[Sherpa-onnx] Loading WASM modules...');
 
-        const wasmMainPath = '/models/sherpa-onnx/sherpa-onnx-wasm-main-tts.js';
-        const ttsJsPath = '/models/sherpa-onnx/sherpa-onnx-tts.js';
+        // 環境変数からベースURLを取得、なければデフォルトパス
+        // 末尾のスラッシュを削除して正規化
+        const baseUrl = (import.meta.env.VITE_MODEL_BASE_URL || '/models/sherpa-onnx').replace(/\/$/, '');
+        
+        const wasmMainPath = `${baseUrl}/sherpa-onnx-wasm-main-tts.js`;
+        const ttsJsPath = `${baseUrl}/sherpa-onnx-tts.js`;
 
         // Helper to load a script
         const loadScript = (src: string) => {
@@ -105,12 +109,14 @@ export class SherpaOnnxService implements AudioSynthesisService {
 
             console.log('[Sherpa-onnx] createOfflineTts found, preparing files...');
 
+            const baseUrl = (import.meta.env.VITE_MODEL_BASE_URL || '/models/sherpa-onnx').replace(/\/$/, '');
+
             // モデルファイルをダウンロードしてWASMのファイルシステムに書き込む
             // デフォルトの .data ファイルに含まれるファイルと衝突しないように別名を使用
             const files = [
-                { url: '/models/sherpa-onnx/vits-zh-jp/model.onnx', filename: 'vits-model.onnx' },
-                { url: '/models/sherpa-onnx/vits-zh-jp/lexicon.txt', filename: 'vits-lexicon.txt' },
-                { url: '/models/sherpa-onnx/vits-zh-jp/tokens.txt', filename: 'vits-tokens.txt' }
+                { url: `${baseUrl}/vits-zh-jp/model.onnx`, filename: 'vits-model.onnx' },
+                { url: `${baseUrl}/vits-zh-jp/lexicon.txt`, filename: 'vits-lexicon.txt' },
+                { url: `${baseUrl}/vits-zh-jp/tokens.txt`, filename: 'vits-tokens.txt' }
             ];
 
             if (!this.Module.FS_createDataFile) {
