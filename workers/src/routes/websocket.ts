@@ -11,7 +11,6 @@ const ws = new Hono<{ Bindings: Env }>();
  * WebSocket接続
  */
 ws.get('/connect/:jobId', async (c) => {
-    const jobId = c.req.param('jobId');
     const upgradeHeader = c.req.header('Upgrade');
 
     if (upgradeHeader !== 'websocket') {

@@ -9,7 +9,6 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { apiRoutes } from './routes/api';
 import { wsRoutes } from './routes/websocket';
-import { authenticate } from '../middleware/auth';
 import { rateLimit } from '../middleware/rate-limit';
 import type { Env } from './types';
 

@@ -17,7 +17,8 @@ import { ContainerManager } from '../../utils/container-manager';
 api.post('/upload-folder', async (c) => {
     try {
         const formData = await c.req.formData();
-        const files = formData.getAll('files') as File[];
+        const filesEntries = formData.getAll('files');
+        const files = filesEntries.filter((f): f is File => f instanceof File);
 
         if (!files || files.length === 0) {
             return c.json({ error: 'No files uploaded' }, 400);

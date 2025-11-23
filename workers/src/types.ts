@@ -15,9 +15,9 @@ export interface Env {
     MOCK_QUEUE?: string; // ローカル開発用
 }
 
-export interface Variables {
+export type Variables = {
     userId?: string;
     user?: any;
-}
+};
 
 export type Context = HonoContext<{ Bindings: Env; Variables: Variables }>;

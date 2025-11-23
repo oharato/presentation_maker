@@ -7,11 +7,9 @@
 import type { Env } from '../src/types';
 
 export class JobQueue {
-    private env: Env;
     private stub: DurableObjectStub;
 
     constructor(env: Env) {
-        this.env = env;
         // 全てのジョブを単一のDurable Objectインスタンスで管理する (Global Queue)
         const id = env.PRESENTATION_MAKER_JOB_MANAGER.idFromName('global-queue');
         this.stub = env.PRESENTATION_MAKER_JOB_MANAGER.get(id);
@@ -90,7 +88,7 @@ export class JobQueue {
     /**
      * 古いジョブをクリーンアップ
      */
-    async cleanupOldJobs(maxAge: number = 24 * 60 * 60 * 1000): Promise<void> {
+    async cleanupOldJobs(_maxAge: number = 24 * 60 * 60 * 1000): Promise<void> {
         // DOのアラームで自動的に行われるため、ここでは何もしない
     }
 }

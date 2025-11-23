@@ -27,10 +27,10 @@ export async function rateLimit(c: Context<{ Bindings: Env }>, next: Next) {
             expirationTtl: 60, // 60秒後に期限切れ
         });
 
-        await next();
+        return await next();
     } catch (error) {
         console.error('Rate limit error:', error);
         // エラー時はレート制限をスキップ
-        await next();
+        return await next();
     }
 }
