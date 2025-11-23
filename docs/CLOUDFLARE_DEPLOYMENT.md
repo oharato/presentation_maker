@@ -56,15 +56,15 @@ compatibility_date = "2024-01-01"
 vars = { ENVIRONMENT = "production" }
 
 [[r2_buckets]]
-binding = "VIDEO_BUCKET"
+binding = "PRESENTATION_MAKER_BUCKET"
 bucket_name = "presentation-videos"
 
 [[durable_objects.bindings]]
-name = "JOB_MANAGER"
+name = "PRESENTATION_MAKER_JOB_MANAGER"
 class_name = "JobManager"
 
 [[kv_namespaces]]
-binding = "CACHE"
+binding = "PRESENTATION_MAKER_CACHE"
 id = "your-kv-namespace-id"
 
 [observability]
@@ -170,10 +170,10 @@ presentation-videos/
 **アクセス方法**:
 ```typescript
 // Workers内でR2にアクセス
-const object = await env.VIDEO_BUCKET.get(`jobs/${jobId}/final_presentation.mp4`);
-const url = await env.VIDEO_BUCKET.createSignedUrl(`jobs/${jobId}/final_presentation.mp4`, {
-  expiresIn: 3600, // 1時間
-});
+const object = await env.PRESENTATION_MAKER_BUCKET.get(`jobs/${jobId}/final_presentation.mp4`);
+
+// R2は署名付きURLをネイティブサポートしていないため、Workers経由でプロキシ
+const proxyUrl = `/api/videos/${jobId}/download`;
 ```
 
 **料金**:
@@ -309,11 +309,11 @@ const response = await fetch(`${env.VOICEVOX_URL}/audio_query`, {
 ```typescript
 // 無音音声のキャッシュ
 const cacheKey = `silence_${duration}s`;
-let silenceAudio = await env.CACHE.get(cacheKey, 'arrayBuffer');
+let silenceAudio = await env.PRESENTATION_MAKER_CACHE.get(cacheKey, 'arrayBuffer');
 
 if (!silenceAudio) {
   silenceAudio = await generateSilence(duration);
-  await env.CACHE.put(cacheKey, silenceAudio, {
+  await env.PRESENTATION_MAKER_CACHE.put(cacheKey, silenceAudio, {
     expirationTtl: 86400 * 30, // 30日間
   });
 }
@@ -468,12 +468,12 @@ export async function rateLimit(c: Context) {
   const ip = c.req.header('CF-Connecting-IP');
   const key = `rate_limit:${ip}`;
   
-  const count = await env.CACHE.get(key);
+  const count = await env.PRESENTATION_MAKER_CACHE.get(key);
   if (count && parseInt(count) > 100) {
     return c.json({ error: 'Too many requests' }, 429);
   }
   
-  await env.CACHE.put(key, (parseInt(count || '0') + 1).toString(), {
+  await env.PRESENTATION_MAKER_CACHE.put(key, (parseInt(count || '0') + 1).toString(), {
     expirationTtl: 60,
   });
 }

@@ -13,8 +13,8 @@ export class JobQueue {
     constructor(env: Env) {
         this.env = env;
         // 全てのジョブを単一のDurable Objectインスタンスで管理する (Global Queue)
-        const id = env.JOB_MANAGER.idFromName('global-queue');
-        this.stub = env.JOB_MANAGER.get(id);
+        const id = env.PRESENTATION_MAKER_JOB_MANAGER.idFromName('global-queue');
+        this.stub = env.PRESENTATION_MAKER_JOB_MANAGER.get(id);
     }
 
     /**

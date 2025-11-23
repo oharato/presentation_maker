@@ -1,10 +1,11 @@
+/// <reference types="@cloudflare/workers-types" />
 import type { Context as HonoContext } from 'hono';
 
 export interface Env {
     ENVIRONMENT: string;
-    VIDEO_BUCKET: R2Bucket;
-    JOB_MANAGER: DurableObjectNamespace;
-    CACHE: KVNamespace;
+    PRESENTATION_MAKER_BUCKET: R2Bucket;
+    PRESENTATION_MAKER_JOB_MANAGER: DurableObjectNamespace;
+    PRESENTATION_MAKER_CACHE: KVNamespace;
     UPSTASH_REDIS_REST_URL: string;
     UPSTASH_REDIS_REST_TOKEN: string;
     JWT_SECRET: string;

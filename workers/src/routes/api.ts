@@ -29,7 +29,7 @@ api.post('/upload-folder', async (c) => {
         // ファイルをR2にアップロード
         for (const file of files) {
             const key = `jobs/${jobId}/uploads/${file.name}`;
-            await c.env.VIDEO_BUCKET.put(key, file.stream());
+            await c.env.PRESENTATION_MAKER_BUCKET.put(key, file.stream());
 
             // ファイル名からスライド情報を抽出
             const match = file.name.match(/^(\d+)__(.+)\.(md|txt)$/);
@@ -171,26 +171,54 @@ api.get('/videos/:id', async (c) => {
         const jobId = c.req.param('id');
         const key = `jobs/${jobId}/final_presentation.mp4`;
 
-        // R2から署名付きURLを生成
-        const object = await c.env.VIDEO_BUCKET.head(key);
+        // R2からオブジェクトの存在確認
+        const object = await c.env.PRESENTATION_MAKER_BUCKET.head(key);
 
         if (!object) {
             return c.json({ error: 'Video not found' }, 404);
         }
 
-        // 署名付きURL生成 (1時間有効)
-        const url = await c.env.VIDEO_BUCKET.createSignedUrl(key, {
-            expiresIn: 3600,
-        });
+        // Workers経由のプロキシURL（R2は署名付きURLをネイティブサポートしていないため）
+        const url = new URL(c.req.url);
+        const proxyUrl = `${url.protocol}//${url.host}/api/videos/${jobId}/download`;
 
         return c.json({
-            url,
+            url: proxyUrl,
             size: object.size,
             uploaded: object.uploaded,
         });
     } catch (error) {
         console.error('Video URL error:', error);
         return c.json({ error: 'Failed to get video URL' }, 500);
+    }
+});
+
+/**
+ * 動画ダウンロード（R2プロキシ）
+ */
+api.get('/videos/:id/download', async (c) => {
+    try {
+        const jobId = c.req.param('id');
+        const key = `jobs/${jobId}/final_presentation.mp4`;
+
+        // R2からオブジェクトを取得
+        const object = await c.env.PRESENTATION_MAKER_BUCKET.get(key);
+
+        if (!object) {
+            return c.json({ error: 'Video not found' }, 404);
+        }
+
+        // ストリーミングレスポンスを返す
+        return new Response(object.body, {
+            headers: {
+                'Content-Type': 'video/mp4',
+                'Content-Disposition': `attachment; filename="presentation_${jobId}.mp4"`,
+                'Cache-Control': 'public, max-age=3600',
+            },
+        });
+    } catch (error) {
+        console.error('Video download error:', error);
+        return c.json({ error: 'Failed to download video' }, 500);
     }
 });
 

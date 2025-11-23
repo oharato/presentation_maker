@@ -87,6 +87,6 @@ docker-compose -f docker-compose.cloudflare.yml up --build
 
 ```toml
 [[durable_objects.bindings]]
-name = "JOB_MANAGER"
+name = "PRESENTATION_MAKER_JOB_MANAGER"
 class_name = "JobManager"
 ```

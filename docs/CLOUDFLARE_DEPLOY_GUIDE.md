@@ -183,27 +183,6 @@ docker logs presentation_maker_video_worker
 2. プロジェクトを選択
 3. Analytics タブ
 
-以下が確認できます:
-- リクエスト数
-- エラー率
-- レスポンスタイム
-- CPU使用時間
-
-### ログ確認
-
-```bash
-# Workers ログ
-wrangler tail
-
-# 特定の環境
-wrangler tail --env production
-
-# フィルタリング
-wrangler tail --status error
-```
-
-### アラート設定
-
 Cloudflare Dashboard → Notifications でアラートを設定:
 - エラー率が閾値を超えた場合
 - CPU使用時間が閾値を超えた場合
@@ -235,7 +214,7 @@ crons = ["0 0 * * *"] # 毎日0時に実行
 
 キャッシュのTTLを適切に設定:
 ```typescript
-await env.CACHE.put(key, value, {
+await env.PRESENTATION_MAKER_CACHE.put(key, value, {
   expirationTtl: 86400, // 24時間
 });
 ```
@@ -311,11 +290,6 @@ api.use('/upload-folder', authenticate);
 rclone sync r2:presentation-videos /backup/r2
 ```
 
-### Redis バックアップ
-
-Upstash は自動バックアップを提供しています。
-Dashboard で確認・復元が可能です。
-
 ## ロールバック
 
 ### Workers ロールバック
@@ -334,7 +308,6 @@ Cloudflare Dashboard → Pages → Deployments から以前のデプロイメン
 - [Cloudflare Workers ドキュメント](https://developers.cloudflare.com/workers/)
 - [Cloudflare Pages ドキュメント](https://developers.cloudflare.com/pages/)
 - [Wrangler CLI ドキュメント](https://developers.cloudflare.com/workers/wrangler/)
-- [Upstash Redis ドキュメント](https://docs.upstash.com/redis)
 
 ## サポート
 

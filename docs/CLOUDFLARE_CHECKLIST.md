@@ -106,8 +106,8 @@ wrangler r2 bucket create presentation-videos-preview
 
 ### 5. Workers KV作成
 ```bash
-wrangler kv:namespace create "CACHE"
-wrangler kv:namespace create "CACHE" --preview
+wrangler kv namespace create "CACHE"
+wrangler kv namespace create "CACHE" --preview
 ```
 
 出力されたIDを `wrangler.toml` に設定:

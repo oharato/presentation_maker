@@ -11,7 +11,7 @@ export async function rateLimit(c: Context<{ Bindings: Env }>, next: Next) {
 
     try {
         // Workers KVから現在のカウントを取得
-        const countStr = await c.env.CACHE.get(key);
+        const countStr = await c.env.PRESENTATION_MAKER_CACHE.get(key);
         const count = countStr ? parseInt(countStr) : 0;
 
         // レート制限チェック (100リクエスト/分)
@@ -23,7 +23,7 @@ export async function rateLimit(c: Context<{ Bindings: Env }>, next: Next) {
         }
 
         // カウントを増加
-        await c.env.CACHE.put(key, (count + 1).toString(), {
+        await c.env.PRESENTATION_MAKER_CACHE.put(key, (count + 1).toString(), {
             expirationTtl: 60, // 60秒後に期限切れ
         });
 

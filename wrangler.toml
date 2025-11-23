@@ -22,13 +22,13 @@ vars = { ENVIRONMENT = "production" }
 
 # R2 バケット (動画ストレージ)
 [[r2_buckets]]
-binding = "VIDEO_BUCKET"
+binding = "PRESENTATION_MAKER_BUCKET"
 bucket_name = "presentation-videos"
 preview_bucket_name = "presentation-videos-preview"
 
 # Durable Objects (ジョブ管理・WebSocket)
 [[durable_objects.bindings]]
-name = "JOB_MANAGER"
+name = "PRESENTATION_MAKER_JOB_MANAGER"
 class_name = "JobManager"
 # script_name は同一Worker内の場合は不要
 
@@ -38,14 +38,14 @@ new_classes = ["JobManager"]
 
 # Workers KV (キャッシュ)
 [[kv_namespaces]]
-binding = "CACHE"
-id = "your-kv-namespace-id"
-preview_id = "your-preview-kv-namespace-id"
+binding = "PRESENTATION_MAKER_CACHE"
+id = "2f2a03c8da9f471c867383b2dbb1ceca"
+preview_id = "8293d34911c4414087b31fba4ac84929"
 
 # ルート設定
 [[routes]]
-pattern = "api.your-domain.com/*"
-zone_name = "your-domain.com"
+pattern = "presentation-maker.ohchans.com/api/*"
+zone_name = "ohchans.com"
 
 # リソース制限
 [limits]
