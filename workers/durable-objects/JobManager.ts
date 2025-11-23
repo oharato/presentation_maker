@@ -53,7 +53,7 @@ export class JobManager implements DurableObject {
     /**
      * WebSocket接続処理
      */
-    private handleWebSocket(request: Request): Response {
+    private handleWebSocket(_request: Request): Response {
         const pair = new WebSocketPair();
         const [client, server] = Object.values(pair);
 

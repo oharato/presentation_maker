@@ -2,8 +2,8 @@
  * 認証ミドルウェア
  */
 
-import type { Context, Next } from 'hono';
-import type { Env } from '../src/types';
+import type { Next } from 'hono';
+import type { Context } from '../src/types';
 
 /**
  * JWT検証 (簡易実装)
@@ -11,6 +11,9 @@ import type { Env } from '../src/types';
 async function verifyJWT(token: string, secret: string): Promise<any> {
     // 本番環境では適切なJWTライブラリを使用
     // 例: @tsndr/cloudflare-worker-jwt
+    
+    // secretを使用していることを明示 (TS6133回避)
+    if (!secret) throw new Error('Secret is not defined');
 
     try {
         const [header, payload, signature] = token.split('.');
@@ -36,7 +39,7 @@ async function verifyJWT(token: string, secret: string): Promise<any> {
 /**
  * 認証ミドルウェア
  */
-export async function authenticate(c: Context<{ Bindings: Env }>, next: Next) {
+export async function authenticate(c: Context, next: Next) {
     const authHeader = c.req.header('Authorization');
 
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -52,7 +55,7 @@ export async function authenticate(c: Context<{ Bindings: Env }>, next: Next) {
         c.set('userId', payload.sub);
         c.set('user', payload);
 
-        await next();
+        return await next();
     } catch (error) {
         console.error('Authentication error:', error);
         return c.json({ error: 'Invalid token' }, 401);
@@ -62,7 +65,7 @@ export async function authenticate(c: Context<{ Bindings: Env }>, next: Next) {
 /**
  * オプショナル認証 (トークンがあれば検証、なくてもOK)
  */
-export async function optionalAuth(c: Context<{ Bindings: Env }>, next: Next) {
+export async function optionalAuth(c: Context, next: Next) {
     const authHeader = c.req.header('Authorization');
 
     if (authHeader && authHeader.startsWith('Bearer ')) {

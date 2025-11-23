@@ -17,7 +17,7 @@ import { ContainerManager } from '../../utils/container-manager';
 api.post('/upload-folder', async (c) => {
     try {
         const formData = await c.req.formData();
-        const filesEntries = formData.getAll('files');
+        const filesEntries = formData.getAll('files') as (File | string)[];
         const files = filesEntries.filter((f): f is File => f instanceof File);
 
         if (!files || files.length === 0) {

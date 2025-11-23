@@ -4,10 +4,13 @@
  * Cloudflare Container内で動画生成処理を実行
  */
 
-import { VideoGenerator } from '../../../src/services/VideoGenerator';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { VideoGenerator } from '@src/services/video_generator';
+import { SlideRenderer } from '@src/services/slide_renderer';
+import { VoicevoxService } from '@src/services/voicevox';
+import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import fs from 'fs-extra';
 import path from 'path';
+import { Readable } from 'stream';
 
 // 環境変数
 const API_URL = process.env.CONTAINER_API_URL || 'http://host.docker.internal:8787';
@@ -19,7 +22,7 @@ const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID!;
 const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY!;
 const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME || 'presentation-videos';
 const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL || '';
-const VOICEVOX_URL = process.env.VOICEVOX_URL || 'http://voicevox:50021';
+const VOICEVOX_URL = process.env.VOICEVOX_URL || 'http://voicevox:50021'; // Re-add VOICEVOX_URL
 
 // R2クライアント (S3互換)
 const s3Client = new S3Client({
@@ -30,6 +33,43 @@ const s3Client = new S3Client({
         secretAccessKey: R2_SECRET_ACCESS_KEY,
     },
 });
+
+/**
+ * R2からファイルをダウンロード
+ */
+async function downloadFileFromR2(jobId: string, filePath: string, destinationPath: string): Promise<void> {
+    const key = `jobs/${jobId}/uploads/${filePath}`;
+    const { Body } = await s3Client.send(new GetObjectCommand({
+        Bucket: R2_BUCKET_NAME,
+        Key: key,
+    }));
+
+    if (!Body) {
+        throw new Error(`File not found in R2: ${key}`);
+    }
+
+    await new Promise((resolve, reject) => {
+        const writeStream = fs.createWriteStream(destinationPath);
+        Readable.fromWeb(Body.transformToWebStream() as any).pipe(writeStream)
+            .on('finish', () => resolve(undefined))
+            .on('error', reject);
+    });
+    console.log(`Downloaded ${key} to ${destinationPath}`);
+}
+
+/**
+ * R2にファイルをアップロード
+ */
+async function uploadFileToR2(jobId: string, filePath: string, fileContent: Buffer, contentType: string): Promise<void> {
+    const key = `jobs/${jobId}/${filePath}`;
+    await s3Client.send(new PutObjectCommand({
+        Bucket: R2_BUCKET_NAME,
+        Key: key,
+        Body: fileContent,
+        ContentType: contentType,
+    }));
+    console.log(`Uploaded ${filePath} to R2 as ${key}`);
+}
 
 /**
  * ジョブを取得 (API経由)
@@ -104,51 +144,144 @@ async function main() {
             // アクティビティ時間を更新
             lastActivityTime = Date.now();
 
-            const { jobId, slides } = job;
-            console.log(`Processing job: ${jobId}`);
+            let jobId: string | undefined; // Declare jobId in a broader scope
+            let tempDir: string | undefined;
+            let outputDir: string | undefined;
 
-            await updateJobStatus(jobId, 'processing', { progress: 0, message: 'Starting video generation' });
+            try { // Inner try-catch for processing a specific job
+                const jobData = job as { jobId: string; slides: any[] };
+                jobId = jobData.jobId; // Assign to the broader scoped jobId
+                const slides = jobData.slides;
+                console.log(`Processing job: ${jobId}`);
 
-            try {
-                // 動画生成
-                const generator = new VideoGenerator(
-                    path.join(process.cwd(), 'temp'),
-                    path.join(process.cwd(), 'output')
-                );
+                await updateJobStatus(jobId, 'processing', { progress: 0, message: 'Starting video generation' });
 
-                const outputPath = await generator.generate(slides, async (progress, message) => {
-                    await updateJobStatus(jobId, 'processing', { progress, message });
-                });
+                tempDir = path.join(process.cwd(), 'temp', jobId);
+                outputDir = path.join(process.cwd(), 'output', jobId);
 
-                // R2にアップロード
-                const fileContent = await fs.readFile(outputPath);
-                const key = `videos/${jobId}.mp4`;
+                await fs.ensureDir(tempDir);
+                await fs.ensureDir(outputDir);
 
-                await s3Client.send(new PutObjectCommand({
-                    Bucket: R2_BUCKET_NAME,
-                    Key: key,
-                    Body: fileContent,
-                    ContentType: 'video/mp4',
-                }));
+                const videoGenerator = new VideoGenerator();
+                const slideRenderer = new SlideRenderer();
+                const voicevoxService = new VoicevoxService(VOICEVOX_URL);
 
-                // 完了通知
+                const finalVideoPaths: string[] = [];
+
+                for (let i = 0; i < slides.length; i++) {
+                    const slide = slides[i];
+                    const slideId = slide.id;
+                    const slideTitle = slide.title;
+
+                    await updateJobStatus(jobId, 'processing', {
+                        progress: Math.floor((i / slides.length) * 100),
+                        message: `Processing slide ${slideId}: ${slideTitle}`,
+                    });
+
+                    const markdownFileName = `${slideId}__${slideTitle}.md`;
+                    const scriptFileName = `${slideId}__${slideTitle}.txt`;
+
+                    const markdownPath = path.join(tempDir, markdownFileName);
+                    const scriptPath = path.join(tempDir, scriptFileName);
+                    const imagePath = path.join(tempDir, `${slideId}__${slideTitle}.png`);
+                    const audioPath = path.join(outputDir, `${slideId}__${slideTitle}.wav`);
+                    const silentVideoPath = path.join(outputDir, `${slideId}__${slideTitle}.nosound.mp4`);
+                    const mergedVideoPath = path.join(outputDir, `${slideId}__${slideTitle}.mp4`);
+
+                    // 1. Download markdown and script
+                    try {
+                        await downloadFileFromR2(jobId, markdownFileName, markdownPath);
+                    } catch (e) {
+                        console.warn(`Markdown file for slide ${slideId} not found in R2. Skipping.`, e);
+                    }
+                    try {
+                        await downloadFileFromR2(jobId, scriptFileName, scriptPath);
+                    } catch (e) {
+                        console.warn(`Script file for slide ${slideId} not found in R2. Skipping.`, e);
+                    }
+
+                    let slideDuration = 0;
+
+                    // 2. Generate audio from script (if exists)
+                    if (await fs.pathExists(scriptPath)) {
+                        const scriptContent = await fs.readFile(scriptPath, 'utf8');
+                        await voicevoxService.generateAudio(scriptContent, audioPath);
+                        slideDuration = await videoGenerator.getAudioDuration(audioPath);
+                        console.log(`Generated audio for slide ${slideId}, duration: ${slideDuration}s`);
+                    }
+
+                    // 3. Render markdown to image
+                    if (await fs.pathExists(markdownPath)) {
+                        const markdownContent = await fs.readFile(markdownPath, 'utf8');
+                        await slideRenderer.renderSlide(markdownContent, imagePath);
+                        console.log(`Rendered image for slide ${slideId}`);
+                    } else {
+                        // If no markdown, create a blank image (or use a default)
+                        console.warn(`No markdown file for slide ${slideId}. Using a placeholder for image path.`);
+                        await fs.copyFile(path.join(__dirname, 'blank.png'), imagePath);
+                    }
+
+                    // 4. Create silent video from image
+                    if (slideDuration === 0) {
+                        // If no audio script, default to a fixed duration
+                        slideDuration = 5; // Default 5 seconds
+                        console.log(`No audio script for slide ${slideId}. Defaulting silent video duration to ${slideDuration}s.`);
+                    }
+                    await videoGenerator.createSilentVideo(imagePath, slideDuration, silentVideoPath);
+                    console.log(`Created silent video for slide ${slideId}`);
+                    await uploadFileToR2(jobId, `0${slideId}__${slideTitle}.nosound.mp4`, await fs.readFile(silentVideoPath), 'video/mp4');
+
+                    // 5. Merge audio and silent video
+                    if (await fs.pathExists(audioPath) && await fs.pathExists(silentVideoPath)) {
+                        await videoGenerator.mergeAudioVideo(silentVideoPath, audioPath, mergedVideoPath);
+                        console.log(`Merged audio and video for slide ${slideId}`);
+                        finalVideoPaths.push(mergedVideoPath);
+                        await uploadFileToR2(jobId, `0${slideId}__${slideTitle}.mp4`, await fs.readFile(mergedVideoPath), 'video/mp4');
+                    } else if (await fs.pathExists(silentVideoPath)) {
+                        // If no audio, use silent video as final slide video
+                        finalVideoPaths.push(silentVideoPath);
+                        await uploadFileToR2(jobId, `0${slideId}__${slideTitle}.mp4`, await fs.readFile(silentVideoPath), 'video/mp4');
+                    } else {
+                        console.warn(`Skipping final video for slide ${slideId} due to missing silent video or audio.`);
+                    }
+                }
+
+                // 6. Concatenate all final slide videos
+                let finalPresentationPath = '';
+                if (finalVideoPaths.length > 0) {
+                    finalPresentationPath = path.join(outputDir, 'final_presentation.mp4');
+                    await videoGenerator.concatVideos(finalVideoPaths, finalPresentationPath);
+                    console.log('Concatenated all slide videos.');
+
+                    // 7. Upload final presentation to R2
+                    const fileContent = await fs.readFile(finalPresentationPath);
+                    const key = `final_presentation.mp4`; // Key within the job folder
+                    await uploadFileToR2(jobId, key, fileContent, 'video/mp4');
+                }
+
+                // 8. Completed notification
                 await updateJobStatus(jobId, 'completed', {
                     progress: 100,
                     message: 'Video generation completed',
-                    videoUrl: `${R2_PUBLIC_URL}/${key}`,
+                    videoUrl: finalPresentationPath ? `${R2_PUBLIC_URL}/jobs/${jobId}/final_presentation.mp4` : undefined,
                 });
 
-                // 一時ファイル削除
-                await fs.remove(outputPath);
-
-            } catch (error: any) {
-                console.error(`Job failed: ${jobId}`, error);
-                await updateJobStatus(jobId, 'failed', {
+            } catch (error: any) { // Catch for specific job failure
+                console.error(`Job failed: ${jobId || 'unknown'}`, error);
+                await updateJobStatus(jobId || 'unknown-job', 'failed', {
                     message: error.message || 'Unknown error',
                 });
+            } finally {
+                // 9. Clean up temporary files
+                if (tempDir) {
+                    await fs.remove(tempDir).catch(e => console.error("Error cleaning temp dir:", e));
+                }
+                if (outputDir) {
+                    await fs.remove(outputDir).catch(e => console.error("Error cleaning output dir:", e));
+                }
             }
 
-        } catch (error) {
+        } catch (error) { // Outer catch for worker loop errors (e.g., getJob failing)
             console.error('Worker loop error:', error);
             await new Promise(resolve => setTimeout(resolve, 5000));
         }

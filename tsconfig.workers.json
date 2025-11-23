@@ -3,8 +3,15 @@
         "target": "ES2021",
         "module": "ESNext",
         "lib": [
-            "ES2021"
+            "ES2021",
+            "dom"
         ],
+        "baseUrl": ".",
+        "paths": {
+            "@src/*": [
+                "./src/*"
+            ]
+        },
         "moduleResolution": "node",
         "resolveJsonModule": true,
         "allowSyntheticDefaultImports": true,
@@ -15,14 +22,16 @@
         "noUnusedParameters": true,
         "noImplicitReturns": true,
         "noFallthroughCasesInSwitch": true,
-        "outDir": "./dist/workers",
-        "rootDir": "./workers",
+        "outDir": "./dist",
+        "rootDir": ".",
         "types": [
             "@cloudflare/workers-types"
         ]
     },
     "include": [
-        "workers/**/*"
+        "workers/**/*",
+        "src/**/*",
+        "node_modules/@types/**/*"
     ],
     "exclude": [
         "node_modules",
