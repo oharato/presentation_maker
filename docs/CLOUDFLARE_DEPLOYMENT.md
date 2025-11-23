@@ -2,72 +2,6 @@
 
 ## 概要
 
-プレゼンテーション動画制作アプリをCloudflareにデプロイするための設計書です。
-Cloudflare Workers、Cloudflare R2、Cloudflare Durable Objects、およびコンテナ技術を活用します。
-
-## アーキテクチャ概要
-
-```mermaid
-graph TB
-    subgraph "Cloudflare Edge"
-        CF[Cloudflare CDN]
-        Pages[Cloudflare Pages<br/>フロントエンド]
-        Workers[Cloudflare Workers<br/>API Gateway]
-    end
-    
-    subgraph "Cloudflare Storage"
-        R2[Cloudflare R2<br/>動画ストレージ]
-        DO[Durable Objects<br/>ジョブ管理]
-        KV[Workers KV<br/>キャッシュ]
-    end
-    
-    subgraph "Cloudflare Containers"
-        Container1[Container 1<br/>Video Worker]
-        Container2[Container 2<br/>VOICEVOX]
-    end
-    
-    subgraph "External Services"
-        Redis[Upstash Redis<br/>ジョブキュー]
-    end
-    
-    User[ユーザー] --> CF
-    CF --> Pages
-    Pages --> Workers
-    Workers --> DO
-    Workers --> R2
-    Workers --> Container1
-    Workers --> Redis
-    Container1 --> Container2
-    Container1 --> R2
-    Container2 --> KV
-```
-
-## コンポーネント設計
-
-### 1. フロントエンド: Cloudflare Pages
-
-**役割**: 静的サイトホスティング
-
-**技術スタック**:
-- Vue.js 3 (現行のまま)
-- Vite でビルド
-- Cloudflare Pages Functions (オプション)
-
-**デプロイ方法**:
-```bash
-# ビルド
-cd web && pnpm build
-
-# Cloudflare Pages にデプロイ
-wrangler pages deploy dist
-```
-
-**設定ファイル**: `wrangler.toml` (Pages用)
-```toml
-name = "presentation-maker-frontend"
-compatibility_date = "2024-01-01"
-
-[build]
 command = "cd web && pnpm build"
 cwd = "."
 watch_dirs = ["web/src"]
@@ -78,14 +12,18 @@ dir = "web/dist"
 ```
 
 **環境変数**:
-- `VITE_API_URL`: Workers APIのURL
-- `VITE_WS_URL`: WebSocket URL (Workers経由)
+- `VITE_API_URL`: `/api` (同一ドメインのため相対パス)
+- `VITE_WS_URL`: `wss://presentation-maker.your-domain.com/api/ws`
 
 ---
 
 ### 2. API Gateway: Cloudflare Workers
 
 **役割**: REST API、WebSocket プロキシ、認証
+
+**URL構成**:
+- Frontend: `https://presentation-maker.your-domain.com`
+- API: `https://presentation-maker.your-domain.com/api/*` (Workers Routesでルーティング)
 
 **技術スタック**:
 - Hono (現行のまま、Workers対応)
@@ -240,37 +178,6 @@ const url = await env.VIDEO_BUCKET.createSignedUrl(`jobs/${jobId}/final_presenta
 
 **料金**:
 - ストレージ: $0.015/GB/月
-- Class A操作 (書き込み): $4.50/百万リクエスト
-- Class B操作 (読み込み): $0.36/百万リクエスト
-- 無料枠: 10GB/月、100万 Class A、1000万 Class B
-
----
-
-### 5. ジョブキュー: Upstash Redis
-
-**役割**: Bull キューのバックエンド
-
-**理由**:
-- Cloudflare Workers から直接アクセス可能
-- Redis互換API
-- サーバーレス対応
-- 従量課金
-
-**設定**:
-```typescript
-// workers/queue.ts
-import { Redis } from '@upstash/redis/cloudflare';
-
-const redis = new Redis({
-  url: env.UPSTASH_REDIS_REST_URL,
-  token: env.UPSTASH_REDIS_REST_TOKEN,
-});
-
-// Bullキューの代わりにカスタムキュー実装
-export class JobQueue {
-  async addJob(jobId: string, data: any) {
-    await redis.lpush('jobs:pending', JSON.stringify({ jobId, data }));
-  }
 
   async getJob() {
     const job = await redis.rpop('jobs:pending');
@@ -303,7 +210,7 @@ export class JobQueue {
 
 **ライフサイクル**:
 1. **起動**: Workers APIがジョブ受信時に、コンテナ起動API（Fly.io Machines API / Google Cloud Run / AWS Fargate 等）をコール
-2. **処理**: コンテナが起動し、Redisキューからジョブを取得して処理
+2. **処理**: コンテナが起動し、Workers API (`/internal/queue/next`) をポーリングしてジョブを取得・処理
 3. **停止**: キューが空になり、指定時間（例: 5分）経過後、プロセスが終了しコンテナが停止
 
 **ワーカー実装 (自動停止付き)**:
@@ -314,7 +221,7 @@ let lastActivityTime = Date.now();
 
 async function processJobs() {
   while (true) {
-    const job = await queue.getJob();
+    const job = await getJobFromApi(); // API経由で取得
     
     if (job) {
       lastActivityTime = Date.now();

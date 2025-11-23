@@ -1,309 +1,88 @@
-# Presentation Maker
+# Presentation Maker (Cloudflare Edition)
 
-プレゼンテーション動画を自動生成するアプリケーションです。
-Markdownのスライドとテキストの台本から、音声付きの動画を作成します。
+マークダウンファイルからプレゼンテーション動画を自動生成するアプリケーションです。
+Cloudflareのエコシステム（Workers, Durable Objects, R2）をフル活用したサーバーレスアーキテクチャを採用しています。
 
 ## 特徴
 
-✨ **2つのモード**
-- **CLIモード**: コマンドラインから一括処理
-- **Webアプリモード**: ブラウザから対話的に操作
-
-🎯 **主な機能**
-- Markdownスライドから高品質な画像生成
-- VOICEVOX による自然な音声合成
-- 音声とスライドの自動同期
-- 複数スライドの自動結合
-- リアルタイム進捗表示 (Webアプリ)
-- `[pause:N]` 構文による無音挿入
-- **入力データの自動保存**:
-  - ブラウザのローカルストレージに入力内容を自動保存
-  - リロードしても作業を継続可能
-- **ブラウザ完結モード (実験的)**:
-  - サーバー不要で動画生成が可能
-  - Transformers.js によるブラウザ内音声合成 (現在は英語のみ、キャッシュ対応で高速化)
-  - FFmpeg.wasm によるブラウザ内動画処理
-
-## 前提条件
-
-### 必須
-- **Node.js** v18以上
-- **pnpm** パッケージマネージャー
-- **FFmpeg** 動画処理ツール
-- **VOICEVOX** 音声合成エンジン
-
-### Webアプリモードの場合
-- **Docker** (WSL2推奨) または **Redis**
-
-## クイックスタート
-
-### CLIモード
-
-1. **依存関係をインストール**
-    ```bash
-    pnpm install
-    ```
-
-2. **環境変数を設定**
-    ```bash
-    cp .env.sample .env
-    # 必要に応じて .env を編集 (音声IDなど)
-    ```
-
-3. **VOICEVOXを起動**
-    - VOICEVOXアプリを起動してください
-
-4. **入力ファイルを配置**
-    
-    `input`フォルダに以下の形式でファイルを配置:
-    - スライド: `010__title.md`
-    - 台本: `010__title.txt`
-    
-    ファイル名の規則:
-    - `{番号}__{タイトル}.{拡張子}`
-    - 番号が一致するファイルが1つのスライドとして処理されます
-
-5. **実行**
-    ```bash
-    pnpm start
-    ```
-
-6. **出力を確認**
-    
-    `output`フォルダに以下が生成されます:
-    - `010__title.wav` - 音声ファイル
-    - `010__title.png` - スライド画像
-    - `010__title.nosound.mp4` - 無音動画
-    - `010__title.mp4` - 完成動画
-    - `final_presentation.mp4` - 全スライド結合動画
-
-### Webアプリモード
-
-詳細は [docs/WEB_APP_SETUP.md](docs/WEB_APP_SETUP.md) を参照してください。
-
-**簡単セットアップ:**
-
-```bash
-# 1. Redisを起動 (WSL2 Docker)
-start-redis.bat
-# または
-pnpm redis:start
-
-# 2. 依存関係をインストール
-pnpm install
-cd web && pnpm install && cd ..
-
-# 3. 開発サーバーを起動
-pnpm dev
-```
-
-**アクセス:**
-- フロントエンド: http://localhost:5173
-- バックエンドAPI: http://localhost:3000
-- Socket.IO: http://localhost:3001
-
-**使い方:**
-1. ブラウザで http://localhost:5173 を開く
-2. ローカルフォルダをアップロード、または手動入力
-3. 動画生成ボタンをクリック
-4. リアルタイムで進捗を確認
-5. 完成した動画をプレビュー・ダウンロード
-
-## ドキュメント
-
-### 📚 主要ドキュメント
-- [**アーキテクチャ概要**](docs/ARCHITECTURE.md) - システム全体図、データフロー、技術スタック
-- [**Webアプリセットアップ**](docs/WEB_APP_SETUP.md) - Webアプリの詳細セットアップ手順
-- [**API仕様**](docs/API.md) - REST API と Socket.IO イベント仕様
-
-### 📖 詳細ドキュメント
-- [要件仕様](docs/REQUIREMENTS.md) - プロジェクト要件
-- [技術仕様](docs/SPECIFICATIONS.md) - 技術的な仕様
-- [開発環境](docs/DEVELOPMENT.md) - 開発環境のセットアップ
-- [コンポーネント図](docs/COMPONENT_DIAGRAM.md) - CLIモードのコンポーネント図
-
-### 🔧 運用ドキュメント
-- [WSL2 Docker Redis](docs/WSL2_DOCKER_REDIS.md) - WSL2でRedisを使う方法
-- [変更履歴](docs/CHANGELOG.md) - バージョン履歴
-
-## スクリプト
-
-### CLIモード
-```bash
-pnpm start              # アプリケーション実行
-pnpm build              # TypeScriptビルド
-pnpm clean              # 出力ファイルクリア
-```
-
-### Webアプリモード
-```bash
-pnpm dev                # 開発サーバー起動 (フロント+バック)
-pnpm dev:server         # バックエンドのみ起動
-pnpm dev:web            # フロントエンドのみ起動
-pnpm build:web          # フロントエンドビルド
-```
-
-### Redis管理 (WSL2 Docker)
-```bash
-pnpm redis:start        # Redis起動
-pnpm redis:stop         # Redis停止
-pnpm redis:logs         # ログ確認
-
-# または、バッチファイルを使用 (Windows)
-start-redis.bat         # Redis起動
-stop-redis.bat          # Redis停止
-```
-
-### テスト
-```bash
-pnpm test               # 全テスト実行
-pnpm test:watch         # ウォッチモード
-```
-
-## 設定
-
-### 音声の変更
-
-`.env`ファイルで`VOICEVOX_SPEAKER_ID`を変更:
-
-```env
-VOICEVOX_SPEAKER_ID=1   # 1: ずんだもん (デフォルト)
-```
-
-利用可能な音声IDは`.env.sample`を参照してください。
-
-詳細: http://localhost:50021/docs (VOICEVOX起動中)
-
-### ポーズの挿入
-
-台本ファイル内で `[pause:秒数]` と記述:
-
-```
-こんにちは。[pause:1.5]今日はいい天気ですね。
-```
-
-- `1.5` = 1.5秒の無音
-- 小数点以下も指定可能
+*   **Markdown to Video**: シンプルなMarkdownファイルからスライドと音声を生成し、動画化します。
+*   **Serverless Architecture**: Cloudflare Workers + Durable Objects + R2 で構築され、待機コストはほぼゼロです。
+*   **Scale to Zero**: 動画生成を行うコンテナはオンデマンドで起動し、アイドル時に自動停止します。
+*   **No External DB**: Redisなどの外部データベースを使わず、Cloudflare Durable Objectsでジョブキューと状態を管理します。
 
 ## 技術スタック
 
-### フロントエンド (Webアプリ)
-- Vue.js 3 + TypeScript
-- Vite
-- Socket.IO Client
+### フロントエンド
+- **Framework**: Vue.js 3
+- **Build Tool**: Vite
+- **Hosting**: Cloudflare Pages
 
-### バックエンド
-- Hono (軽量Webフレームワーク)
-- Socket.IO (リアルタイム通信)
-- Bull (ジョブキュー)
-- Redis (データストア)
+### バックエンド (API Gateway)
+- **Runtime**: Cloudflare Workers
+- **Framework**: Hono
+- **Language**: TypeScript
 
-### サービス
-- VOICEVOX (音声合成)
-- FFmpeg (動画処理)
-- Puppeteer (スライドレンダリング)
-- Marked (Markdown処理)
+### インフラ & データ
+- **Job Queue & State**: Cloudflare Durable Objects (Redis不要)
+- **Storage**: Cloudflare R2 (動画・音声ファイル)
+- **Cache**: Cloudflare Workers KV
 
-## トラブルシューティング
+### 動画生成 (Compute)
+- **Runtime**: Cloudflare Containers (Docker)
+- **Tools**: Node.js, FFmpeg, Puppeteer
+- **TTS**: VOICEVOX (Docker)
 
-### VOICEVOXに接続できない
+## アーキテクチャ
+
+完全なサーバーレスアーキテクチャを採用し、コスト効率とスケーラビリティを最大化しています。
+
+1.  **API Gateway**: Cloudflare Workers がリクエストを受け付け。
+2.  **Job Queue**: Durable Objects がジョブの順序とステータスを管理。
+3.  **Storage**: 素材と生成物は Cloudflare R2 に保存。
+4.  **Compute**: 重い動画生成処理はコンテナで行い、Workersからオンデマンドで起動。
+5.  **Realtime**: WebSocket (Durable Objects) で進捗をリアルタイム通知。
+
+詳細なアーキテクチャ解説は [技術ブログ記事](docs/ARCHITECTURE_BLOG.md) をご覧ください。
+
+## クイックスタート (ローカル開発)
+
+### 前提条件
+- Node.js v18+
+- pnpm
+- Docker (コンテナ動作確認用)
+
+### セットアップ
+
 ```bash
-# VOICEVOXが起動しているか確認
-# ブラウザで http://localhost:50021/docs にアクセス
-```
-
-### Redisに接続できない (Webアプリ)
-```bash
-# WSL2 Docker の場合
-wsl docker compose ps
-
-# ローカルRedisの場合
-redis-cli ping
-```
-
-### FFmpegが見つからない
-```bash
-# インストール確認
-ffmpeg -version
-
-# Windowsの場合
-winget install Gyan.FFmpeg
-```
-
-### テストが失敗する
-```bash
-# node_modulesを再インストール
-rm -rf node_modules
+# 依存関係インストール
 pnpm install
 
-# キャッシュをクリア
-pnpm store prune
+# Cloudflare Workers (Backend) 起動
+pnpm dev:workers
 ```
 
-## 貢献
-
-プルリクエストを歓迎します!
-
-1. このリポジトリをフォーク
-2. フィーチャーブランチを作成 (`git checkout -b feature/amazing-feature`)
-3. 変更をコミット (`git commit -m 'Add amazing feature'`)
-4. ブランチにプッシュ (`git push origin feature/amazing-feature`)
-5. プルリクエストを作成
-
-## Cloudflare デプロイ
-
-このアプリケーションは Cloudflare にデプロイ可能です。
-
-### 主要コンポーネント
-
-- **Cloudflare Pages**: フロントエンドホスティング
-- **Cloudflare Workers**: API Gateway
-- **Cloudflare R2**: 動画ストレージ
-- **Cloudflare Durable Objects**: ジョブ管理・WebSocket
-- **Cloudflare Container**: 動画処理ワーカー、VOICEVOX
-
-### クイックデプロイ
+### コンテナ動作確認 (ローカル)
 
 ```bash
-# 1. 依存関係インストール
-pnpm add -D @cloudflare/workers-types wrangler
-pnpm add @upstash/redis @aws-sdk/client-s3
+# コンテナビルド & 起動
+docker-compose -f docker-compose.cloudflare.yml up --build
+```
 
-# 2. Cloudflare ログイン
-wrangler login
+## デプロイ
 
-# 3. R2 バケット作成
-wrangler r2 bucket create presentation-videos
+Cloudflareへのデプロイ手順は [Cloudflare デプロイガイド](docs/CLOUDFLARE_DEPLOY_GUIDE.md) を参照してください。
 
-# 4. Workers KV 作成
-wrangler kv:namespace create "CACHE"
-
-# 5. シークレット設定
-wrangler secret put UPSTASH_REDIS_REST_URL
-wrangler secret put UPSTASH_REDIS_REST_TOKEN
-wrangler secret put JWT_SECRET
-
-# 6. デプロイ
+```bash
+# 全体デプロイ
 pnpm deploy:all
 ```
 
-### 詳細ドキュメント
+## ドキュメント
 
-- [Cloudflare デプロイ設計](docs/CLOUDFLARE_DEPLOYMENT.md)
-- [Cloudflare デプロイガイド](docs/CLOUDFLARE_DEPLOY_GUIDE.md)
-
-### コスト見積もり
-
-**オンデマンド起動 (Scale to Zero) により、大幅なコスト削減が可能です。**
-
-- **待機時間**: $0 (アイドル時は自動停止)
-- **実行時間**: 実際に動画を生成している時間のみ課金
-
-月間1,000ジョブ (1ジョブあたり平均3分) の場合:
-- コンテナ稼働時間: 50時間/月
-- コンテナコスト: 約$1.5/月 (常時起動の約$20/月から90%以上削減)
-
-詳細は [CLOUDFLARE_DEPLOYMENT.md](docs/CLOUDFLARE_DEPLOYMENT.md) を参照。
+*   [**アーキテクチャ解説 (ブログ)**](docs/ARCHITECTURE_BLOG.md) - 技術選定の理由と構成図
+*   [**デプロイガイド**](docs/CLOUDFLARE_DEPLOY_GUIDE.md) - 本番環境へのデプロイ手順
+*   [**デプロイ設計書**](docs/CLOUDFLARE_DEPLOYMENT.md) - 詳細なシステム設計
+*   [**ローカル開発ガイド**](docs/LOCAL_DEV_GUIDE.md) - Miniflareを使った開発方法
 
 ## ライセンス
 
@@ -312,7 +91,3 @@ ISC
 ## 作者
 
 プロジェクトマネージャー兼開発者
-
----
-
-**📖 詳細なドキュメントは [docs/](docs/) ディレクトリを参照してください。**

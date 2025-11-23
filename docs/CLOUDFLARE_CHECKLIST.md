@@ -22,7 +22,7 @@
 - [x] `workers/src/routes/websocket.ts` - WebSocketルート
 - [x] `workers/middleware/auth.ts` - 認証ミドルウェア
 - [x] `workers/middleware/rate-limit.ts` - レート制限ミドルウェア
-- [x] `workers/utils/queue.ts` - ジョブキュー (Upstash Redis)
+- [x] `workers/utils/queue.ts` - ジョブキュー (Durable Objects)
 - [x] `workers/durable-objects/JobManager.ts` - Durable Objects実装
 
 ### Container実装
@@ -39,7 +39,7 @@
 pnpm add -D @cloudflare/workers-types wrangler
 
 # Workers用のランタイム依存関係
-pnpm add @upstash/redis
+
 
 # Container用の依存関係
 pnpm add @aws-sdk/client-s3
@@ -88,16 +88,11 @@ import type { Context } from '../types';
 
 ## 🚀 実装が必要: Cloudflareセットアップ
 
-### 1. Cloudflareアカウント設定
+### 2. Cloudflareアカウント設定
 - [ ] Cloudflareアカウント作成
 - [ ] Workers & Pages プラン有効化
 - [ ] R2 有効化
 - [ ] Durable Objects 有効化 (有料プラン)
-
-### 2. Upstash Redis設定
-- [ ] Upstashアカウント作成
-- [ ] Redisデータベース作成
-- [ ] REST API URL/Token取得
 
 ### 3. Wrangler CLI設定
 - [ ] Wrangler インストール: `pnpm add -g wrangler`
@@ -125,9 +120,8 @@ preview_id = "your-preview-kv-namespace-id"
 
 ### 6. シークレット設定
 ```bash
-wrangler secret put UPSTASH_REDIS_REST_URL
-wrangler secret put UPSTASH_REDIS_REST_TOKEN
 wrangler secret put JWT_SECRET
+wrangler secret put CONTAINER_API_TOKEN
 wrangler secret put R2_ACCOUNT_ID
 wrangler secret put R2_ACCESS_KEY_ID
 wrangler secret put R2_SECRET_ACCESS_KEY

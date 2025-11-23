@@ -11,154 +11,6 @@
 - **Wrangler CLI** (Cloudflare Workers CLI)
 - **Docker** (コンテナビルド用)
 
-### Cloudflareアカウント
-
-1. [Cloudflare](https://dash.cloudflare.com/sign-up) でアカウント作成
-2. Workers & Pages プランを有効化 (無料プランでOK)
-3. R2 を有効化
-4. Durable Objects を有効化 (有料プラン必要)
-
-### Upstash Redis
-
-1. [Upstash](https://console.upstash.com/) でアカウント作成
-2. Redis データベースを作成
-3. REST API の URL とトークンを取得
-
-## セットアップ
-
-### 1. Wrangler CLI インストール
-
-```bash
-pnpm add -g wrangler
-```
-
-### 2. Cloudflare ログイン
-
-```bash
-wrangler login
-```
-
-ブラウザが開くので、Cloudflareアカウントでログインします。
-
-### 3. R2 バケット作成
-
-```bash
-# 本番用
-wrangler r2 bucket create presentation-videos
-
-# プレビュー用
-wrangler r2 bucket create presentation-videos-preview
-```
-
-### 4. Workers KV 作成
-
-```bash
-# 本番用
-wrangler kv:namespace create "CACHE"
-
-# プレビュー用
-wrangler kv:namespace create "CACHE" --preview
-```
-
-出力された `id` と `preview_id` を `wrangler.toml` に設定します。
-
-### 5. シークレット設定
-
-```bash
-# Upstash Redis URL
-wrangler secret put UPSTASH_REDIS_REST_URL
-
-# Upstash Redis Token
-wrangler secret put UPSTASH_REDIS_REST_TOKEN
-
-# JWT Secret (任意の文字列)
-wrangler secret put JWT_SECRET
-
-# R2 認証情報 (Container用)
-wrangler secret put R2_ACCOUNT_ID
-wrangler secret put R2_ACCESS_KEY_ID
-wrangler secret put R2_SECRET_ACCESS_KEY
-```
-
-### 6. 依存関係インストール
-
-```bash
-# Workers用の依存関係
-pnpm add -D @cloudflare/workers-types wrangler
-
-# Workers用のランタイム依存関係
-pnpm add @upstash/redis uuid
-
-# Container用の依存関係
-pnpm add @aws-sdk/client-s3
-```
-
-## ビルド
-
-### Workers ビルド
-
-```bash
-pnpm build:workers
-```
-
-### フロントエンド ビルド
-
-```bash
-pnpm build:web
-```
-
-### Docker イメージビルド
-
-```bash
-# 全てビルド
-pnpm docker:build
-
-# または個別に
-pnpm docker:build:worker
-pnpm docker:build:voicevox
-```
-
-## デプロイ
-
-### ステージング環境
-
-#### 1. Workers デプロイ
-
-```bash
-pnpm deploy:workers:staging
-```
-
-#### 2. Pages デプロイ
-
-```bash
-pnpm deploy:pages:staging
-```
-
-#### 3. コンテナデプロイ
-
-```bash
-# ローカルでテスト
-pnpm cloudflare:start
-
-# ログ確認
-pnpm cloudflare:logs
-
-# 停止
-pnpm cloudflare:stop
-```
-
-本番環境では、Cloudflare Container Registry にプッシュします:
-
-```bash
-# Dockerイメージにタグ付け
-docker tag presentation-maker-worker registry.cloudflare.com/your-account-id/presentation-maker-worker
-docker tag presentation-maker-voicevox registry.cloudflare.com/your-account-id/presentation-maker-voicevox
-
-# プッシュ
-docker push registry.cloudflare.com/your-account-id/presentation-maker-worker
-docker push registry.cloudflare.com/your-account-id/presentation-maker-voicevox
-```
-
 ### 本番環境
 
 #### 一括デプロイ
@@ -190,29 +42,50 @@ pnpm deploy:pages:production
 
 ### Pages 環境変数
 
-Cloudflare Dashboard で設定:
+Cloudflare Dashboard https://dash.cloudflare.com/ で設定:
 
 1. Pages プロジェクトを開く
 2. Settings → Environment variables
 3. 以下を追加:
-   - `VITE_API_URL`: `https://api.your-domain.com`
-   - `VITE_WS_URL`: `wss://api.your-domain.com/ws`
+   - `VITE_API_URL`: `/api` (同一ドメインなので相対パスでOK)
+   - `VITE_WS_URL`: `wss://presentation-maker.your-domain.com/api/ws` (WebSocketはフルURL推奨)
 
-## カスタムドメイン設定
+## カスタムドメインとルーティング設定
 
-### Workers
+フロントエンドとAPIを同じドメイン (`presentation-maker.your-domain.com`) で提供するための設定です。
 
-1. Cloudflare Dashboard → Workers & Pages
-2. プロジェクトを選択
-3. Settings → Triggers → Custom Domains
-4. `api.your-domain.com` を追加
+### 1. Pages (フロントエンド)
 
-### Pages
+Cloudflare Dashboard で Pages プロジェクトにカスタムドメインを設定します。
 
 1. Cloudflare Dashboard → Pages
 2. プロジェクトを選択
 3. Custom domains
 4. `presentation-maker.your-domain.com` を追加
+   - これで `https://presentation-maker.your-domain.com` でフロントエンドが表示されます。
+
+### 2. Workers (API)
+
+Workers を同じドメインの `/api/*` パスで動作させます。
+
+`wrangler.toml` に以下を追加（または書き換え）します:
+
+```toml
+[env.production]
+# ... 他の設定 ...
+routes = [
+	{ pattern = "presentation-maker.your-domain.com/api/*", zone_name = "your-domain.com" }
+]
+```
+
+または、Cloudflare Dashboard から設定する場合:
+1. Workers & Pages → Workers プロジェクト
+2. Settings → Triggers → Routes
+3. Add route:
+   - Route: `presentation-maker.your-domain.com/api/*`
+   - Zone: `your-domain.com`
+
+これにより、`/api/` で始まるリクエストだけが Workers に転送され、それ以外は Pages (フロントエンド) が表示されます。
 
 ## 動作確認
 
