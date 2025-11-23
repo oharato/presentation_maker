@@ -5,47 +5,59 @@ main = "workers/src/index.ts"
 compatibility_date = "2024-01-01"
 compatibility_flags = ["nodejs_compat"]
 
-# 開発環境
+# マイグレーション設定（グローバル）
+[[migrations]]
+tag = "v1"
+new_classes = ["JobManager"]
+
+# 開発環境 (wrangler dev)
 [env.development]
 name = "presentation-maker-api-dev"
 vars = { ENVIRONMENT = "development", MOCK_QUEUE = "true" }
+[[env.development.r2_buckets]]
+binding = "PRESENTATION_MAKER_BUCKET"
+bucket_name = "presentation-videos"
+preview_bucket_name = "presentation-videos-preview"
+[[env.development.kv_namespaces]]
+binding = "PRESENTATION_MAKER_CACHE"
+id = "2f2a03c8da9f471c867383b2dbb1ceca"
+preview_id = "8293d34911c4414087b31fba4ac84929"
+[[env.development.durable_objects.bindings]]
+name = "PRESENTATION_MAKER_JOB_MANAGER"
+class_name = "JobManager"
 
 # ステージング環境
 [env.staging]
 name = "presentation-maker-api-staging"
 vars = { ENVIRONMENT = "staging" }
+[[env.staging.r2_buckets]]
+binding = "PRESENTATION_MAKER_BUCKET"
+bucket_name = "presentation-videos"
+preview_bucket_name = "presentation-videos-preview"
+[[env.staging.kv_namespaces]]
+binding = "PRESENTATION_MAKER_CACHE"
+id = "2f2a03c8da9f471c867383b2dbb1ceca"
+preview_id = "8293d34911c4414087b31fba4ac84929"
+[[env.staging.durable_objects.bindings]]
+name = "PRESENTATION_MAKER_JOB_MANAGER"
+class_name = "JobManager"
 
 # 本番環境
 [env.production]
 name = "presentation-maker-api-production"
 vars = { ENVIRONMENT = "production" }
-
-# R2 バケット (動画ストレージ)
-[[r2_buckets]]
-binding = "PRESENTATION_MAKER_BUCKET"
-bucket_name = "presentation-videos"
-preview_bucket_name = "presentation-videos-preview"
-
-# Durable Objects (ジョブ管理・WebSocket)
-[[durable_objects.bindings]]
-name = "PRESENTATION_MAKER_JOB_MANAGER"
-class_name = "JobManager"
-# script_name は同一Worker内の場合は不要
-
-[[migrations]]
-tag = "v1"
-new_classes = ["JobManager"]
-
-# Workers KV (キャッシュ)
-[[kv_namespaces]]
-binding = "PRESENTATION_MAKER_CACHE"
-id = "2f2a03c8da9f471c867383b2dbb1ceca"
-preview_id = "8293d34911c4414087b31fba4ac84929"
-
-# ルート設定
-[[routes]]
+[[env.production.routes]]
 pattern = "presentation-maker.ohchans.com/api/*"
 zone_name = "ohchans.com"
+[[env.production.r2_buckets]]
+binding = "PRESENTATION_MAKER_BUCKET"
+bucket_name = "presentation-videos"
+[[env.production.kv_namespaces]]
+binding = "PRESENTATION_MAKER_CACHE"
+id = "2f2a03c8da9f471c867383b2dbb1ceca"
+[[env.production.durable_objects.bindings]]
+name = "PRESENTATION_MAKER_JOB_MANAGER"
+class_name = "JobManager"
 
 # リソース制限
 [limits]
