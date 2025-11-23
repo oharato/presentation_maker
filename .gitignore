@@ -10,3 +10,4 @@ web/public/models/sherpa-onnx/*.wasm
 web/public/models/sherpa-onnx/*.data
 web/public/models/sherpa-onnx/**/*.onnx
 web/public/models/sherpa-onnx/**/*.bin
+.wrangler
