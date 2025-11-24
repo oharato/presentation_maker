@@ -18,6 +18,7 @@
     },
     "include": [
         "video-worker.ts",
+        "index.ts",
         "src/**/*"
     ]
 }
