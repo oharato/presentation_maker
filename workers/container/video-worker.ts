@@ -4,6 +4,7 @@
  * Cloudflare Container内で動画生成処理を実行
  */
 
+import '@src/config'; // Load environment variables
 import { VideoGenerator } from '@src/services/video_generator';
 import { SlideRenderer } from '@src/services/slide_renderer';
 import { VoicevoxService } from '@src/services/voicevox';

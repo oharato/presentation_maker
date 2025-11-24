@@ -41,7 +41,8 @@
             ],
             "vars": {
                 "CONTAINER_API_URL": "https://presentation-maker.ohchans.com",
-                "R2_BUCKET_NAME": "presentation-videos"
+                "R2_BUCKET_NAME": "presentation-videos",
+                "VOICEVOX_URL": "http://127.0.0.1:50021"
             },
             "r2_buckets": [
                 {

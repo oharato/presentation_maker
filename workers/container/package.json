@@ -3,7 +3,8 @@
     "version": "1.0.0",
     "main": "video-worker.js",
     "scripts": {
-        "build": "tsc && tsc-alias"
+        "build": "tsc && tsc-alias",
+        "start": "node dist/video-worker.js"
     },
     "dependencies": {
         "@aws-sdk/client-s3": "^3.679.0",

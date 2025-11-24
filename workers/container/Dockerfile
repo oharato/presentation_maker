@@ -31,6 +31,9 @@ RUN pnpm install
 
 COPY . .
 
+# TypeScriptのビルド
+RUN pnpm run build
+
 # Puppeteerの設定
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
