@@ -35,6 +35,7 @@
     "docker:build:worker": "wsl docker build -t presentation-maker-worker -f workers/container/Dockerfile .",
     "docker:build:voicevox": "wsl docker build -t presentation-maker-voicevox -f workers/container/voicevox/Dockerfile .",
     "docker:build": "pnpm docker:build:worker && pnpm docker:build:voicevox",
+    "deploy:container": "node workers/container/copy-files.js && cd workers/container && wrangler deploy --env production",
     "cloudflare:start": "wsl docker compose -f docker-compose.cloudflare.yml up -d",
     "cloudflare:stop": "wsl docker compose -f docker-compose.cloudflare.yml down",
     "cloudflare:logs": "wsl docker compose -f docker-compose.cloudflare.yml logs -f",

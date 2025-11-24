@@ -11,6 +11,18 @@ import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3
 import fs from 'fs-extra';
 import path from 'path';
 import { Readable } from 'stream';
+import http from 'http';
+
+// HTTPサーバー起動 (Cloudflare Containers用)
+const PORT = process.env.PORT || 80;
+const server = http.createServer((req, res) => {
+    res.writeHead(200);
+    res.end('Video Worker is running');
+});
+
+server.listen(PORT, () => {
+    console.log(`Server listening on port ${PORT}`);
+});
 
 // 環境変数
 const API_URL = process.env.CONTAINER_API_URL || 'http://host.docker.internal:8787';

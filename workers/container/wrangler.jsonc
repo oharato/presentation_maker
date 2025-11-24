@@ -1,0 +1,59 @@
+{
+    "name": "presentation-maker-worker",
+    "main": "index.ts",
+    "compatibility_date": "2024-01-01",
+    "compatibility_flags": [
+        "nodejs_compat"
+    ],
+    "triggers": {
+        "crons": [
+            "* * * * *"
+        ]
+    },
+    "migrations": [
+        {
+            "tag": "v3",
+            "new_sqlite_classes": [
+                "VideoWorkerV2"
+            ]
+        }
+    ],
+    "env": {
+        "production": {
+            "observability": {
+                "enabled": true
+            },
+            "durable_objects": {
+                "bindings": [
+                    {
+                        "name": "VIDEO_WORKER",
+                        "class_name": "VideoWorkerV2"
+                    }
+                ]
+            },
+            "containers": [
+                {
+                    "name": "video-worker",
+                    "image": "./Dockerfile",
+                    "class_name": "VideoWorkerV2"
+                }
+            ],
+            "vars": {
+                "CONTAINER_API_URL": "https://presentation-maker.ohchans.com",
+                "R2_BUCKET_NAME": "presentation-videos"
+            },
+            "r2_buckets": [
+                {
+                    "binding": "PRESENTATION_MAKER_BUCKET",
+                    "bucket_name": "presentation-videos"
+                }
+            ],
+            "kv_namespaces": [
+                {
+                    "binding": "PRESENTATION_MAKER_CACHE",
+                    "id": "2f2a03c8da9f471c867383b2dbb1ceca"
+                }
+            ]
+        }
+    }
+}
