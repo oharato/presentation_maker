@@ -37,8 +37,10 @@ const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL || '';
 const VOICEVOX_URL = process.env.VOICEVOX_URL || 'http://voicevox:50021'; // Re-add VOICEVOX_URL
 
 // R2クライアント (S3互換)
+// R2クライアント (S3互換)
+console.log(`Initializing S3Client with endpoint: https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`);
 const s3Client = new S3Client({
-    region: 'auto',
+    region: 'us-east-1', // R2互換のためus-east-1を指定
     endpoint: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
     credentials: {
         accessKeyId: R2_ACCESS_KEY_ID,
@@ -98,6 +100,12 @@ async function getJob() {
             return null;
         }
 
+        if (response.status === 429) {
+            console.warn('Rate limited (429). Waiting before retry...');
+            await new Promise(resolve => setTimeout(resolve, 30000)); // 30秒待機
+            return null;
+        }
+
         if (!response.ok) {
             throw new Error(`Failed to get job: ${response.statusText}`);
         }
@@ -148,8 +156,8 @@ async function main() {
                     process.exit(0); // コンテナを終了
                 }
 
-                // ジョブがない場合は待機
-                await new Promise(resolve => setTimeout(resolve, 5000));
+                // ジョブがない場合は待機 (10秒)
+                await new Promise(resolve => setTimeout(resolve, 10000));
                 continue;
             }
 
@@ -207,16 +215,28 @@ async function main() {
                     const silentVideoPath = path.join(outputDir, `${slideId}__${slideTitle}.nosound.mp4`);
                     const mergedVideoPath = path.join(outputDir, `${slideId}__${slideTitle}.mp4`);
 
-                    // 1. Download markdown and script
-                    try {
-                        await downloadFileFromR2(jobId, markdownFileName, markdownPath);
-                    } catch (e) {
-                        console.warn(`Markdown file for slide ${slideId} not found in R2. Skipping.`, e);
+                    // 1. Prepare markdown and script files
+                    // Check if content is provided directly in the job data
+                    if (slide.markdown) {
+                        await fs.writeFile(markdownPath, slide.markdown);
+                        console.log(`Wrote markdown for slide ${slideId} from job data`);
+                    } else {
+                        try {
+                            await downloadFileFromR2(jobId, markdownFileName, markdownPath);
+                        } catch (e) {
+                            console.warn(`Markdown file for slide ${slideId} not found in R2. Skipping.`, e);
+                        }
                     }
-                    try {
-                        await downloadFileFromR2(jobId, scriptFileName, scriptPath);
-                    } catch (e) {
-                        console.warn(`Script file for slide ${slideId} not found in R2. Skipping.`, e);
+
+                    if (slide.script) {
+                        await fs.writeFile(scriptPath, slide.script);
+                        console.log(`Wrote script for slide ${slideId} from job data`);
+                    } else {
+                        try {
+                            await downloadFileFromR2(jobId, scriptFileName, scriptPath);
+                        } catch (e) {
+                            console.warn(`Script file for slide ${slideId} not found in R2. Skipping.`, e);
+                        }
                     }
 
                     let slideDuration = 0;

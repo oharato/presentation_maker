@@ -1,24 +1,23 @@
 # Video Worker Container
-FROM node:20-alpine
+FROM node:24-slim
 
-# FFmpegインストール
-RUN apk add --no-cache ffmpeg
-
-# Puppeteer依存関係
-RUN apk add --no-cache \
+# 必要なパッケージのインストール (FFmpeg, Chromium, フォントなど)
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
     chromium \
-    nss \
-    freetype \
-    freetype-dev \
-    harfbuzz \
+    libnss3 \
+    libfreetype6 \
+    libfreetype6-dev \
+    libharfbuzz-bin \
     ca-certificates \
-    ttf-freefont \
+    fonts-freefont-ttf \
     nodejs \
-    yarn
+    procps \
+    && rm -rf /var/lib/apt/lists/*
 
 # Puppeteer設定
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
-    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 WORKDIR /app
 

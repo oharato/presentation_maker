@@ -30,7 +30,14 @@ api.post('/upload-folder', async (c) => {
         // ファイルをR2にアップロード
         for (const file of files) {
             const key = `jobs/${jobId}/uploads/${file.name}`;
-            await c.env.PRESENTATION_MAKER_BUCKET.put(key, file.stream());
+            console.log(`Uploading file to R2: ${key}, size: ${file.size}`);
+            try {
+                await c.env.PRESENTATION_MAKER_BUCKET.put(key, file.stream());
+                console.log(`Successfully uploaded: ${key}`);
+            } catch (uploadError) {
+                console.error(`Failed to upload ${key}:`, uploadError);
+                throw uploadError;
+            }
 
             // ファイル名からスライド情報を抽出
             const match = file.name.match(/^(\d+)__(.+)\.(md|txt)$/);
