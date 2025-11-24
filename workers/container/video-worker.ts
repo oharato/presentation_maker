@@ -156,15 +156,22 @@ async function main() {
             // アクティビティ時間を更新
             lastActivityTime = Date.now();
 
-            let jobId: string | undefined; // Declare jobId in a broader scope
+            let jobId: string | undefined;
             let tempDir: string | undefined;
             let outputDir: string | undefined;
 
-            try { // Inner try-catch for processing a specific job
-                const jobData = job as { jobId: string; slides: any[] };
-                jobId = jobData.jobId; // Assign to the broader scoped jobId
-                const slides = jobData.slides;
-                console.log(`Processing job: ${jobId}`);
+            try {
+                console.log('Received job:', JSON.stringify(job, null, 2));
+
+                const jobData = job as { jobId: string; data: { slides: any[] } };
+                jobId = jobData.jobId;
+                const slides = jobData.data?.slides;
+
+                if (!slides || !Array.isArray(slides)) {
+                    throw new Error(`Invalid job data: slides is ${typeof slides}. Job data: ${JSON.stringify(job)}`);
+                }
+
+                console.log(`Processing job: ${jobId} with ${slides.length} slides`);
 
                 await updateJobStatus(jobId, 'processing', { progress: 0, message: 'Starting video generation' });
 
@@ -183,7 +190,7 @@ async function main() {
                 for (let i = 0; i < slides.length; i++) {
                     const slide = slides[i];
                     const slideId = slide.id;
-                    const slideTitle = slide.title;
+                    const slideTitle = slide.title || `slide_${i + 1}`; // titleがない場合はデフォルト値
 
                     await updateJobStatus(jobId, 'processing', {
                         progress: Math.floor((i / slides.length) * 100),
@@ -230,7 +237,8 @@ async function main() {
                     } else {
                         // If no markdown, create a blank image (or use a default)
                         console.warn(`No markdown file for slide ${slideId}. Using a placeholder for image path.`);
-                        await fs.copyFile(path.join(__dirname, 'blank.png'), imagePath);
+                        const blankPngPath = path.join(process.cwd(), 'blank.png'); // /app/blank.png
+                        await fs.copyFile(blankPngPath, imagePath);
                     }
 
                     // 4. Create silent video from image

@@ -1,37 +1,117 @@
+
+主要なコンポーネント間のメッセージングとデータフローの詳細です。
+
 ```mermaid
 graph TD
-    subgraph Input
-        MD["Markdown File (*.md)"]
-        TXT["Text File (*.txt)"]
+    subgraph "API Gateway (Worker)"
+        API_Handler["Request Handler"]
     end
 
-    subgraph App
-        Main[Main Process]
-        VR["Voice Renderer (VOICEVOX)"]
-        SR[Slide Renderer]
-        VG["Video Generator (FFmpeg)"]
+    subgraph "JobManager (Durable Object)"
+        DO_Queue["Job Queue (Array)"]
+        DO_State["Job State (Map)"]
+        DO_Alarm["Alarm Handler"]
     end
 
-    subgraph Output
-        WAV["Audio File (*.wav)"]
-        NSMP4["Silent Video (*.nosound.mp4)"]
-        MP4["Final Video (*.mp4)"]
+    subgraph "Video Worker (Container)"
+        VW_Poller["Job Poller"]
+        VW_Processor["Job Processor"]
+        VW_Uploader["Result Uploader"]
     end
+    style R2_Output fill:#f3e5f5
+```
 
-    TXT --> Main
-    MD --> Main
+## 2. 動画生成詳細シーケンス (Container Internal)
 
-    Main -->|Text| VR
-    VR -->|API Call| VOICEVOX((VOICEVOX Engine))
-    VOICEVOX -->|Audio Data| VR
-    VR --> WAV
+Video Workerコンテナ内部での処理フローとファイル操作の詳細です。
 
-    Main -->|Markdown| SR
-    SR -->|Image| VG
-    WAV -->|Duration| VG
-    VG --> NSMP4
+```mermaid
+sequenceDiagram
+    participant Poller as Job Poller
+    participant Proc as Processor
+    participant R2 as R2 Storage
+    participant Puppeteer as Slide Renderer
+    participant Voicevox as Voice Generator
+    participant FFmpeg as Video Generator
 
-    WAV --> VG
-    NSMP4 --> VG
-    VG --> MP4
+    Poller->>Proc: Process Job (ID: 123)
+    
+    %% 1. Setup
+    Proc->>Proc: Create Temp Dir (/tmp/123)
+    Proc->>R2: Download "123/slides.md"
+    Proc->>R2: Download "123/script.txt"
+    
+    %% 2. Slide Generation
+    loop Each Slide
+        Proc->>Puppeteer: Render Markdown
+        Puppeteer-->>Proc: Save "slide_01.png"
+        
+        Proc->>Voicevox: Generate Audio
+        Voicevox-->>Proc: Save "audio_01.wav"
+        
+        Proc->>FFmpeg: Create Silent Video (Image + Duration)
+        FFmpeg-->>Proc: Save "video_01_silent.mp4"
+        
+        Proc->>FFmpeg: Merge Audio & Video
+        FFmpeg-->>Proc: Save "video_01.mp4"
+    end
+    
+    %% 3. Concatenation
+    Proc->>FFmpeg: Concat All Videos
+    FFmpeg-->>Proc: Save "final.mp4"
+    
+    %% 4. Upload & Cleanup
+    Proc->>R2: Upload "final.mp4"
+    Proc->>Proc: Remove Temp Dir
+    Proc-->>Poller: Job Completed
+```
+
+## 3. データモデル (Durable Object State)
+
+JobManagerが保持する状態データの構造です。
+
+```typescript
+// Job State stored in Durable Object
+interface JobState {
+  id: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  progress: number; // 0-100
+  createdAt: number;
+  updatedAt: number;
+  resultUrl?: string; // R2 Public URL or Signed URL
+  error?: string;
+}
+
+// Queue Structure
+type JobQueue = string[]; // List of Job IDs
+```
+
+## 4. ファイルパス構成 (R2 & Container)
+
+### R2 Storage Structure
+```
+bucket/
+  ├── input/
+  │   └── {jobId}/
+  │       ├── slides.md
+  │       └── script.txt
+  │
+  └── output/
+      └── {jobId}/
+          └── final.mp4
+```
+
+### Container Temp Directory
+```
+/tmp/{jobId}/
+  ├── source/
+  │   ├── slides.md
+  │   └── script.txt
+  │
+  ├── assets/
+  │   ├── slide_01.png
+  │   ├── audio_01.wav
+  │   └── video_01.mp4
+  │
+  └── final.mp4
 ```

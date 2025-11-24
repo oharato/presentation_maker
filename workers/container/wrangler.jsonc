@@ -35,7 +35,8 @@
                 {
                     "name": "video-worker",
                     "image": "./Dockerfile",
-                    "class_name": "VideoWorkerV2"
+                    "class_name": "VideoWorkerV2",
+                    "instance_type": "standard-1"
                 }
             ],
             "vars": {

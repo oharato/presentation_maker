@@ -45,5 +45,5 @@ RUN pnpm run build
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
     CMD node -e "console.log('healthy')" || exit 1
 
-# ワーカー起動
-CMD ["node", "dist/video-worker.js"]
+# ワーカー起動（メモリ制限を2GBに設定）
+CMD ["node", "--max-old-space-size=2048", "dist/video-worker.js"]

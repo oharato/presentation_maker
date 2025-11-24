@@ -68,27 +68,27 @@ input/
    - リストに追加された動画を番号順に連結
    - `output/final_presentation.mp4` として保存
 
-### Webアプリモード
+### Webアプリモード (Cloudflare)
 
 1. **ファイルアップロード / 手動入力**
-   - ブラウザからファイルアップロードまたは手動入力
-   - サーバー側でファイル解析・グループ化
+   - ブラウザからAPIへリクエスト
+   - Markdown/ScriptをR2に保存
    - ジョブIDを生成
 
 2. **ジョブキューに追加**
-   - Bull Queue にジョブを追加
-   - Redis にジョブデータを保存
+   - Durable Object (JobQueue) にジョブを追加
    - クライアントに jobId を返却
 
-3. **ワーカーによる処理**
-   - Video Worker がジョブを取得
-   - 各スライドを順次処理 (CLIモードと同様)
-   - 進捗を Socket.IO で通知
+3. **ワーカーによる処理 (Cloudflare Container)**
+   - Video Worker コンテナが定期的にポーリング (Cron Trigger / Loop)
+   - ジョブを取得し、R2から素材をダウンロード
+   - 各スライドを順次処理 (Puppeteer, VOICEVOX, FFmpeg)
+   - 生成された動画をR2にアップロード
+   - 進捗をAPI経由でDurable Objectに通知
 
 4. **完了通知**
-   - 最終動画を `public/videos/` に保存
-   - Socket.IO で完了通知
-   - 動画URLをクライアントに送信
+   - クライアントはAPIをポーリングまたはWebSocketで状態監視
+   - 完了時、R2の署名付きURLまたは公開URLを取得して動画を表示
 
 ## データフォーマット
 
@@ -98,204 +98,108 @@ interface Slide {
   id: string;           // スライド番号
   markdown: string;     // Markdownコンテンツ
   script: string;       // トークスクリプト
+  title?: string;       // スライドタイトル
 }
 ```
 
-### ジョブデータ (Webアプリ)
+### ジョブデータ (API)
 ```typescript
 interface VideoJobData {
   jobId: string;
-  slides: Slide[];
+  data: {
+    slides: Slide[];
+  };
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  createdAt: string;
 }
 ```
 
-### 進捗データ (Webアプリ)
+### 進捗データ (API)
 ```typescript
 interface JobProgress {
   jobId: string;
+  status: string;
   progress: number;     // 0-100
   message: string;      // "Processing slide 2/5"
+  videoUrl?: string;    // 完了時のみ
 }
 ```
 
 ## 音声合成仕様
 
-### サーバー側: VOICEVOX API
-- **ベースURL**: `http://127.0.0.1:50021` (デフォルト)
+### サーバー側: VOICEVOX (Container)
+- **URL**: 環境変数 `VOICEVOX_URL` で指定 (例: `http://voicevox:50021`)
 - **エンドポイント**:
-  - `POST /audio_query` - 音声クエリ作成
-  - `POST /synthesis` - 音声合成
-- **出力形式**: WAV (16bit, 24kHz)
-
-#### ポーズ構文
-- **形式**: `[pause:N]`
-- **N**: 秒数 (小数点可)
-- **例**: `こんにちは。[pause:1.5]今日は...`
-
-#### 無音音声キャッシング
-- 同じ長さの無音音声は再利用
-- 一時ディレクトリにキャッシュ
-- ファイル名: `silence_{秒数}s_{タイムスタンプ}.wav`
+  - `POST /audio_query`
+  - `POST /synthesis`
+- **出力形式**: WAV
 
 ### ブラウザ側: Sherpa-onnx (WASM)
-- **実装**: WebAssembly版Sherpa-onnx
-- **モデル**: 
-  - 日本語TTS: `vits-piper-ja` (推奨)
-  - その他のPiper互換モデル
-- **ロード方法**: CDN経由でスクリプトとモデルをロード
-- **出力形式**: WAV (16bit, 22.05kHz)
-- **制限事項**:
-  - 初回ロードに時間がかかる (モデルサイズ: 約50MB)
-  - ブラウザのメモリ制限に注意
+- (変更なし)
 
-### ブラウザ側: Transformers.js (onnxruntime-web)
-- **実装**: Hugging Face Transformers.js v2.17.2
-- **モデル**: 
-  - `Xenova/speecht5_tts` (英語)
-  - `HifiGan` vocoder (自動ロード)
-- **ロード方法**: 
-  - `pipeline` 関数を使用
-  - `onnxruntime-web` v1.14.0 (CDN経由またはバンドル)
-- **出力形式**: WAV (16bit, 16kHz)
-- **制限事項**:
-  - 初回実行時にモデルダウンロード (約100-200MB)
-  - 日本語対応は未実装 (適切なモデルの選定が必要)
-- **キャッシュ戦略**:
-  - `env.useBrowserCache = true` を使用 (Cache API)
-  - 署名付きURLなどによるキャッシュ不整合時は自動リトライ
-  - ローカルファイル (`config.json`等) の誤キャッシュ (404 HTML) を検知して自動削除
+### ブラウザ側: Transformers.js
+- (変更なし)
 
 ## クライアント側データ永続化
-
-### LocalStorage
-- **キー**: `presentation_maker_slides`
-- **保存タイミング**: スライドデータ (`slides` 配列) の変更時 (watch)
-- **読み込みタイミング**: アプリ初期化時 (`onMounted`)
-- **データ形式**: JSON文字列化された `Slide[]`
-- **クリア**: 「内容をクリア」ボタンで削除および初期化
+- (変更なし)
 
 ## スライドレンダリング仕様
-
-### HTML生成
-- Marked でMarkdownをHTMLに変換
-- カスタムCSSでスタイリング
-- 1920x1080 解像度
-
-### スタイル
-```css
-body {
-  width: 1920px;
-  height: 1080px;
-  font-family: 'Segoe UI', sans-serif;
-  background-color: #f0f0f0;
-  font-size: 48px;
-}
-h1 { font-size: 120px; }
-h2 { font-size: 80px; }
-```
+- (変更なし)
 
 ## 動画生成仕様
-
-### 無音動画
-- **コーデック**: libx264
-- **解像度**: 1920x1080
-- **フレームレート**: 30fps
-- **入力**: 静止画像 (PNG)
-- **時間**: 音声ファイルの長さに合わせる
-
-### 音声・動画結合
-- **音声コーデック**: AAC
-- **動画コーデック**: libx264 (copy)
-- **同期**: 音声の長さに合わせる
-
-### 動画連結
-- **方法**: FFmpeg concat demuxer
-- **フォーマット**: MP4
-- **順序**: スライド番号順
+- (変更なし)
 
 ## エラーハンドリング
 
 ### CLIモード
-- **対応する台本がないスライド**: 
-  - 動画生成をスキップ
-  - ログに警告を出力
-  
-- **対応するスライドがない台本**: 
-  - 音声のみ生成
-  - 動画結合はスキップ
-  
-- **結合する動画がない場合**: 
-  - 最終動画生成をスキップ
-  - ログに警告を出力
+- (変更なし)
 
-### Webアプリモード
+### Webアプリモード (Cloudflare)
 - **ファイルアップロードエラー**:
-  - 400 Bad Request を返却
-  - エラーメッセージを表示
+  - 400 Bad Request
   
 - **ジョブ処理エラー**:
-  - Socket.IO で `job:failed` イベント送信
-  - エラー詳細をログに記録
+  - コンテナ内でキャッチし、ジョブステータスを `failed` に更新
+  - エラーメッセージを保存
   
-- **VOICEVOX接続エラー**:
-  - リトライ (最大3回)
-  - 失敗時はジョブを失敗扱い
+- **コンテナエラー**:
+  - メモリ不足 (OOM) 等は Cloudflare ログで確認
+  - 自動再起動 (Cron/Platform)
 
 ## パフォーマンス最適化
 
 ### 並列処理
-- Webアプリモード: 複数ワーカーで並列処理可能
-- CLIモード: 順次処理 (シンプルさ優先)
+- Cloudflare Containersはインスタンス数をスケール可能
+- Durable Objectがジョブを適切に分配 (現在はFIFOキュー)
 
 ### キャッシング
-- 無音音声のキャッシング
-- 将来: スライド画像のキャッシング
+- R2へのアクセスを最小限に
+- 生成済み動画の再利用 (ジョブIDベース)
 
 ### ファイルクリーンアップ
-- 一時ファイルの自動削除
-- アップロードファイルの削除
-- 古い動画ファイルの定期削除 (将来実装)
+- コンテナ内の一時ファイルはジョブ完了時に削除
+- R2の一時ファイル (Markdown/Script) はライフサイクルルールで削除 (要設定)
 
 ## セキュリティ
 
 ### 入力検証
-- ファイルサイズ制限: 10MB/ファイル
-- 許可する拡張子: `.md`, `.txt`
-- スライド数制限: 100枚まで
-
-### サニタイズ
-- Markdown入力のサニタイズ (XSS対策)
-- ファイル名のサニタイズ
+- ファイルサイズ制限
+- Markdownサニタイズ
 
 ### アクセス制御
-- 将来実装: ユーザー認証
-- 将来実装: ジョブ所有権チェック
+- R2バケットは非公開 (Worker経由または署名付きURL)
+- APIトークンによる内部API保護 (`CONTAINER_API_TOKEN`)
 
 ## 互換性
-
-### ブラウザ (Webアプリ)
-- Chrome 90+
-- Firefox 88+
-- Edge 90+
-- Safari 14+ (未検証)
-
-### OS
-- Windows 10/11
-- WSL2 (推奨)
-
-### Node.js
-- v18.0.0 以上
-- v20.0.0 推奨
+- (変更なし)
 
 ## 制限事項
 
-### 技術的制限
-- 最大スライド数: 100枚
-- 最大動画長: 60分
-- 同時ジョブ数: 10 (Webアプリ)
+### Cloudflare Containers
+- **メモリ制限**: インスタンスタイプによる (lite: 256MB ~ standard-4: 12GB)
+- **実行時間**: リクエスト処理時間ではなく、コンテナの稼働時間に課金
+- **コールドスタート**: コンテナ起動に時間がかかる場合がある
 
 ### 既知の問題
-- fluent-ffmpeg パッケージが deprecated
-  - 代替パッケージなし、継続使用
-- 大きな動画ファイルのメモリ使用量
-  - 将来: ストリーミング処理に移行
+- Puppeteerのメモリ消費量が大きい (standard-1以上推奨)
+

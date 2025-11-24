@@ -338,8 +338,185 @@ curl http://localhost:50021/speakers
    git push origin v1.0.0
    ```
 
+## Cloudflare Containersデプロイ
+
+### 前提条件
+
+- Cloudflareアカウント
+- Wrangler CLI (`pnpm install -g wrangler`)
+- Docker (ローカルテスト用)
+
+### セットアップ
+
+#### 1. R2 API トークンの作成
+
+1. Cloudflareダッシュボード → R2 → Manage R2 API Tokens
+2. Create API Token
+3. Permissions: Admin Read & Write
+4. 以下の情報を取得：
+   - Access Key ID
+   - Secret Access Key
+   - Account ID (URLまたは `wrangler whoami` で確認)
+
+#### 2. Secretsの設定
+
+```bash
+cd workers/container
+pnpm wrangler secret put R2_ACCOUNT_ID --env production
+pnpm wrangler secret put R2_ACCESS_KEY_ID --env production
+pnpm wrangler secret put R2_SECRET_ACCESS_KEY --env production
+```
+
+#### 3. デプロイ
+
+```bash
+# ルートディレクトリから
+pnpm deploy:container
+```
+
+このコマンドは以下を実行します：
+1. `src/` ディレクトリを `workers/container/src/` にコピー
+2. Dockerイメージをビルド
+3. Cloudflare Containersにデプロイ
+
+### ローカルテスト
+
+```bash
+# ファイル準備
+powershell -Command "Copy-Item -Path src -Destination workers/container/src -Recurse -Force"
+
+# Dockerビルド
+cd workers/container
+wsl docker build -t test-video-worker .
+
+# 実行
+wsl docker run --rm -e PORT=8080 -p 8080:8080 test-video-worker
+```
+
+### 設定
+
+#### インスタンスタイプ
+
+`workers/container/wrangler.jsonc` で設定：
+
+```jsonc
+{
+  "containers": [{
+    "instance_type": "standard-1"  // 4 GiB
+  }]
+}
+```
+
+利用可能なタイプ：
+- `lite`: 256 MiB
+- `basic`: 1 GiB
+- `standard-1`: 4 GiB (推奨)
+- `standard-2`: 6 GiB
+- `standard-3`: 8 GiB
+- `standard-4`: 12 GiB
+
+Puppeteerを使う場合は `standard-1` 以上を推奨。
+
+#### 環境変数
+
+コンテナに渡す環境変数は `index.ts` のコンストラクタで設定：
+
+```typescript
+constructor(state: any, env: any) {
+  super(state, env);
+  this.envVars = {
+    CONTAINER_API_URL: env.CONTAINER_API_URL,
+    R2_ACCOUNT_ID: env.R2_ACCOUNT_ID,
+    // ...
+  };
+}
+```
+
+### トラブルシューティング
+
+#### メモリ不足エラー
+
+**症状**: `FATAL ERROR: Reached heap limit Allocation failed`
+
+**対処法**:
+1. `wrangler.jsonc` で `instance_type` を上げる
+2. `Dockerfile` で Node.js のヒープサイズを増やす：
+   ```dockerfile
+   CMD ["node", "--max-old-space-size=2048", "dist/video-worker.js"]
+   ```
+
+#### コンテナが起動しない
+
+**症状**: ログに `GET /keepalive` は出るが、コンテナログが出ない
+
+**確認事項**:
+1. HTTPサーバーが起動しているか（`video-worker.ts`）
+2. `Container` クラスを正しく継承しているか（`@cloudflare/containers`）
+3. `defaultPort` が設定されているか
+
+#### 環境変数が渡らない
+
+**症状**: `process.env.XXX` が `undefined`
+
+**確認事項**:
+1. Secretsが設定されているか：
+   ```bash
+   pnpm wrangler secret list --env production
+   ```
+2. `index.ts` のコンストラクタで `envVars` に設定しているか
+3. 再デプロイしたか
+
+#### TypeScriptパスエイリアスエラー
+
+**症状**: `MODULE_NOT_FOUND: @src/...`
+
+**対処法**:
+`package.json` に `tsc-alias` を追加：
+```json
+{
+  "scripts": {
+    "build": "tsc && tsc-alias"
+  },
+  "devDependencies": {
+    "tsc-alias": "^1.8.8"
+  }
+}
+```
+
+### ログ確認
+
+```bash
+# Cloudflareダッシュボード
+# Workers & Pages → presentation-maker-worker-production → Logs
+
+# または wrangler CLI
+cd workers/container
+pnpm wrangler tail --env production
+```
+
+### デプロイフロー
+
+```
+1. ソースコード変更
+   ↓
+2. pnpm deploy:container
+   ↓
+3. copy-files.js 実行 (src/ をコピー)
+   ↓
+4. Dockerイメージビルド
+   ↓
+5. Cloudflareにプッシュ
+   ↓
+6. Durable Object + Container デプロイ
+   ↓
+7. Cron Trigger が1分ごとに起動
+```
+
 ## 参考リンク
 
+- [Cloudflare Containers Documentation](https://developers.cloudflare.com/workers/runtime-apis/containers/)
+- [Cloudflare Containers GitHub](https://github.com/cloudflare/containers)
+- [Wrangler Configuration](https://developers.cloudflare.com/workers/wrangler/configuration/)
 - [Hono Documentation](https://hono.dev/)
 - [Vue.js Documentation](https://vuejs.org/)
 - [Bull Documentation](https://github.com/OptimalBits/bull)
