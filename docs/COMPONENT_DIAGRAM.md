@@ -30,23 +30,6 @@ sequenceDiagram
     participant Poller as Job Poller
     participant Proc as Processor
     participant R2 as R2 Storage
-    participant Puppeteer as Slide Renderer
-    participant Voicevox as Voice Generator
-    participant FFmpeg as Video Generator
-
-    Poller->>Proc: Process Job (ID: 123)
-    
-    %% 1. Setup
-    Proc->>Proc: Create Temp Dir (/tmp/123)
-    Proc->>R2: Download "123/slides.md"
-    Proc->>R2: Download "123/script.txt"
-    
-    %% 2. Slide Generation
-    loop Each Slide
-        Proc->>Puppeteer: Render Markdown
-        Puppeteer-->>Proc: Save "slide_01.png"
-        
-        Proc->>Voicevox: Generate Audio
         Voicevox-->>Proc: Save "audio_01.wav"
         
         Proc->>FFmpeg: Create Silent Video (Image + Duration)

@@ -71,9 +71,14 @@ input/
 ### Webアプリモード (Cloudflare)
 
 1. **ファイルアップロード / 手動入力**
-   - ブラウザからAPIへリクエスト
-   - Markdown/ScriptをR2に保存
-   - ジョブIDを生成
+   - **ファイルアップロード (`/api/upload-folder`)**:
+     - ブラウザからAPIへリクエスト
+     - Markdown/ScriptをR2に保存
+     - ジョブIDを生成
+   - **手動入力 (`/api/generate`)**:
+     - ブラウザからJSONデータとしてスライド情報を送信
+     - スライド内容 (Markdown/Script) はジョブデータに直接含める (R2への保存はスキップ)
+     - ジョブIDを生成
 
 2. **ジョブキューに追加**
    - Durable Object (JobQueue) にジョブを追加
@@ -81,7 +86,10 @@ input/
 
 3. **ワーカーによる処理 (Cloudflare Container)**
    - Video Worker コンテナが定期的にポーリング (Cron Trigger / Loop)
-   - ジョブを取得し、R2から素材をダウンロード
+   - ジョブを取得
+   - **素材取得**:
+     - ジョブデータにコンテンツが含まれる場合はそれを使用
+     - 含まれない場合はR2からダウンロード
    - 各スライドを順次処理 (Puppeteer, VOICEVOX, FFmpeg)
    - 生成された動画をR2にアップロード
    - 進捗をAPI経由でDurable Objectに通知
