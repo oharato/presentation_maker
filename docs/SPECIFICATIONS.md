@@ -29,9 +29,9 @@ input/
 - **結合動画**: `output/{番号}__{タイトル}.mp4`
 - **最終成果物**: `output/final_presentation.mp4`
 
-### 出力ファイル (Webアプリ)
-- **動画**: `public/videos/{jobId}_{番号}.mp4`
-- **最終成果物**: `public/videos/{jobId}_final.mp4`
+### 出力ファイル (Webアプリ / Cloudflare R2)
+- **スライド動画**: `jobs/{jobId}/0{番号}__{タイトル}.mp4`
+- **最終成果物**: `jobs/{jobId}/final_presentation.mp4`
 
 ## 処理フロー
 
@@ -73,11 +73,11 @@ input/
 1. **ファイルアップロード / 手動入力**
    - **ファイルアップロード (`/api/upload-folder`)**:
      - ブラウザからAPIへリクエスト
-     - Markdown/ScriptをR2に保存
+     - Markdown/ScriptをR2に保存 (`jobs/{jobId}/uploads/`)
      - ジョブIDを生成
    - **手動入力 (`/api/generate`)**:
      - ブラウザからJSONデータとしてスライド情報を送信
-     - スライド内容 (Markdown/Script) はジョブデータに直接含める (R2への保存はスキップ)
+     - スライド内容 (Markdown/Script) はジョブデータに直接含める
      - ジョブIDを生成
 
 2. **ジョブキューに追加**
@@ -88,10 +88,10 @@ input/
    - Video Worker コンテナが定期的にポーリング (Cron Trigger / Loop)
    - ジョブを取得
    - **素材取得**:
-     - ジョブデータにコンテンツが含まれる場合はそれを使用
-     - 含まれない場合はR2からダウンロード
+     - ジョブデータにコンテンツが含まれる場合はそれを使用 (手動入力時)
+     - 含まれない場合はR2からダウンロード (`jobs/{jobId}/uploads/`)
    - 各スライドを順次処理 (Puppeteer, VOICEVOX, FFmpeg)
-   - 生成された動画をR2にアップロード
+   - 生成された動画をR2にアップロード (`jobs/{jobId}/`)
    - 進捗をAPI経由でDurable Objectに通知
 
 4. **完了通知**

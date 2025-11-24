@@ -483,6 +483,22 @@ constructor(state: any, env: any) {
 }
 ```
 
+#### Cannot find module '@cloudflare/containers'
+
+**症状**: `index.ts` でモジュールが見つからないエラーが出る
+
+**対処法**:
+`tsconfig.json` の `include` 配列に `index.ts` が含まれているか確認してください：
+```json
+{
+  "include": [
+    "video-worker.ts",
+    "index.ts",
+    "src/**/*"
+  ]
+}
+```
+
 ### ログ確認
 
 ```bash
