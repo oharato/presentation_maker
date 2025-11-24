@@ -137,18 +137,24 @@ api.get('/jobs/:id', async (c) => {
 /**
  * [Internal] 次のジョブを取得 (コンテナ用)
  */
+/**
+ * [Internal] 次のジョブを取得 (コンテナ用)
+ */
 api.get('/internal/queue/next', async (c) => {
+    console.log(`[Internal] GET /queue/next called from ${c.req.header('User-Agent')}`);
     try {
         const queue = new JobQueue(c.env);
         const job = await queue.getJob();
 
         if (!job) {
+            console.log('[Internal] No job available (204)');
             return c.body(null, 204); // No Content
         }
 
+        console.log(`[Internal] Job dispatched: ${job.jobId}`);
         return c.json(job);
     } catch (error) {
-        console.error('Queue error:', error);
+        console.error('[Internal] Queue error:', error);
         return c.json({ error: 'Failed to get next job' }, 500);
     }
 });

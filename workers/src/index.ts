@@ -24,7 +24,14 @@ app.use('*', cors({
 }));
 
 // レート制限
-app.use('/api/*', rateLimit);
+// レート制限
+app.use('/api/*', async (c, next) => {
+    // internalエンドポイントはスキップ
+    if (c.req.path.includes('/internal/')) {
+        return await next();
+    }
+    return rateLimit(c, next);
+});
 
 // ヘルスチェック
 app.get('/health', (c) => {

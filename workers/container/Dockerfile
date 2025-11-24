@@ -1,48 +1,57 @@
-# Video Worker Container
-FROM node:24-slim
+# VOICEVOXエンジンをベースにする
+FROM voicevox/voicevox_engine:cpu-ubuntu24.04-latest
 
-# 必要なパッケージのインストール (FFmpeg, Chromium, フォントなど)
+# rootユーザーで実行
+USER root
+
+# 必要なパッケージのインストール
 RUN apt-get update && apt-get install -y \
+    curl \
+    gnupg \
     ffmpeg \
-    chromium \
-    libnss3 \
-    libfreetype6 \
-    libfreetype6-dev \
-    libharfbuzz-bin \
     ca-certificates \
-    fonts-freefont-ttf \
-    nodejs \
-    procps \
+    fonts-liberation \
+    lsb-release \
+    wget \
+    xdg-utils \
+    dos2unix \
     && rm -rf /var/lib/apt/lists/*
 
-# Puppeteer設定
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
-    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+# Node.js 24のインストール
+RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
+    apt-get install -y nodejs
 
-WORKDIR /app
-
-# pnpmインストール
+# pnpmのインストール
 RUN npm install -g pnpm
 
-# 依存関係ファイルをコピー
-COPY package.json ./
+# アプリケーションのセットアップ
+WORKDIR /app
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install
 
-# 依存関係インストール
-RUN pnpm install --no-frozen-lockfile --prod
+COPY . .
 
-# ソースコードコピー
-COPY src ./src
-COPY video-worker.ts ./
-COPY tsconfig.json ./
-COPY blank.png ./
+# Puppeteerの設定
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
 
-# TypeScriptビルド
-RUN pnpm add -D typescript @types/node tsc-alias
-RUN pnpm run build
+# Chromeのインストール (Puppeteer用)
+RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
+    && sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list' \
+    && apt-get update \
+    && apt-get install -y google-chrome-stable \
+    && rm -rf /var/lib/apt/lists/*
 
-# ヘルスチェック
-HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-    CMD node -e "console.log('healthy')" || exit 1
+# エントリーポイントスクリプト
+COPY entrypoint.sh /entrypoint.sh
+RUN dos2unix /entrypoint.sh && chmod +x /entrypoint.sh
 
-# ワーカー起動（メモリ制限を2GBに設定）
-CMD ["node", "--max-old-space-size=2048", "dist/video-worker.js"]
+# VOICEVOXのポート
+EXPOSE 50021
+# Workerのポート
+EXPOSE 80
+
+# Node.jsのヒープサイズ制限を緩和
+ENV NODE_OPTIONS="--max-old-space-size=2048"
+
+ENTRYPOINT ["/entrypoint.sh"]
