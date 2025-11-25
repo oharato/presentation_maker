@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "main": "dist/video-worker.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node build.js",
     "start": "node dist/video-worker.js",
-    "deploy": "pnpm run build && wrangler deploy"
+    "deploy": "pnpm run build && wrangler deploy -e production --no-bundle"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.939.0",
@@ -16,6 +16,7 @@
     "@cloudflare/workers-types": "^4.20251125.0",
     "@types/fs-extra": "^11.0.4",
     "@types/node": "^24.10.1",
+    "esbuild": "^0.27.0",
     "typescript": "^5.9.3",
     "wrangler": "^4.50.0"
   }

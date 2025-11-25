@@ -1,4 +1,4 @@
-declare module '@cloudflare/containers' {
+declare module 'cloudflare:containers' {
     export class Container {
         constructor(state: any, env: any);
         envVars: any;

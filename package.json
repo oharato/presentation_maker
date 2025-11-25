@@ -11,7 +11,7 @@
     "deploy": "pnpm run build && pnpm --filter \"./apps/*\" -r --if-present run deploy",
     "deploy:web": "pnpm --filter @presentation-maker/web run deploy",
     "deploy:api": "pnpm --filter @presentation-maker/worker-api run deploy",
-    "deploy:container": "pnpm --filter @presentation-maker/worker-container run deploy",
+    "deploy:container": "pnpm run docker:build && npx wrangler containers push presentation-maker-worker && pnpm --filter @presentation-maker/worker-container run deploy",
     "clean": "pnpm -r run clean",
     "test": "pnpm -r test"
   },

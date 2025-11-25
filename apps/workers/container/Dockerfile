@@ -26,11 +26,12 @@ RUN npm install -g pnpm
 
 # アプリケーションのセットアップ
 WORKDIR /app
-
 # プロジェクトルート全体をコピー
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY packages ./packages
-COPY apps/workers/container ./apps/workers/container
+COPY package.json /app/package.json
+COPY pnpm-lock.yaml /app/pnpm-lock.yaml
+COPY pnpm-workspace.yaml /app/pnpm-workspace.yaml
+COPY packages /app/packages
+COPY apps/workers/container /app/apps/workers/container
 
 # pnpm install
 RUN pnpm install --frozen-lockfile
