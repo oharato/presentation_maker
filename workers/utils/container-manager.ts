@@ -4,7 +4,7 @@
  * 外部コンテナサービス（Fly.io, Google Cloud Run等）の起動を制御する
  */
 
-import type { Env } from '../src/types';
+import type { Env } from '../api/types';
 
 export class ContainerManager {
     private env: Env;

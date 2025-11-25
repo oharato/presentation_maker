@@ -4,7 +4,7 @@
  * Redisの代わりにDurable Objectsを使用してジョブを管理する
  */
 
-import type { Env } from '../src/types';
+import type { Env } from '../api/types';
 
 export class JobQueue {
     private stub: DurableObjectStub;

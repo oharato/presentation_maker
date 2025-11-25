@@ -3,7 +3,7 @@
  */
 
 import type { Next } from 'hono';
-import type { Context } from '../src/types';
+import type { Context } from '../api/types';
 
 /**
  * JWT検証 (簡易実装)
@@ -11,7 +11,7 @@ import type { Context } from '../src/types';
 async function verifyJWT(token: string, secret: string): Promise<any> {
     // 本番環境では適切なJWTライブラリを使用
     // 例: @tsndr/cloudflare-worker-jwt
-    
+
     // secretを使用していることを明示 (TS6133回避)
     if (!secret) throw new Error('Secret is not defined');
 

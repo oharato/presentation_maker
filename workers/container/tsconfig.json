@@ -4,21 +4,23 @@
         "module": "CommonJS",
         "moduleResolution": "node",
         "outDir": "./dist",
-        "rootDir": ".",
+        "rootDir": "../../",
         "strict": true,
         "esModuleInterop": true,
         "skipLibCheck": true,
         "forceConsistentCasingInFileNames": true,
-        "baseUrl": ".",
-        "paths": {
-            "@src/*": [
-                "./src/*"
-            ]
-        }
+        "baseUrl": "../../",
+        "typeRoots": [
+            "../../node_modules/@types",
+            "../../node_modules"
+        ],
+        "types": [
+            "@cloudflare/workers-types"
+        ]
     },
     "include": [
         "video-worker.ts",
         "index.ts",
-        "src/**/*"
+        "../../src/**/*"
     ]
 }

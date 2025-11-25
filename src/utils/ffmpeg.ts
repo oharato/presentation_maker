@@ -13,8 +13,8 @@ import ffprobeInstaller from '@ffprobe-installer/ffprobe';
 
 const execAsync = promisify(exec);
 
-export const FFMPEG_PATH = ffmpegInstaller.path;
-export const FFPROBE_PATH = ffprobeInstaller.path;
+export const FFMPEG_PATH = process.env.FFMPEG_PATH || ffmpegInstaller.path;
+export const FFPROBE_PATH = process.env.FFPROBE_PATH || ffprobeInstaller.path;
 
 /**
  * FFmpegコマンドを実行

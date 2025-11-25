@@ -1,5 +1,0 @@
-src/src/
-src/**/*.js
-dist/
-node_modules/
-.wrangler/

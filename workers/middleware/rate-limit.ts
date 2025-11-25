@@ -3,7 +3,7 @@
  */
 
 import type { Context, Next } from 'hono';
-import type { Env } from '../src/types';
+import type { Env } from '../api/types';
 
 export async function rateLimit(c: Context<{ Bindings: Env }>, next: Next) {
     const ip = c.req.header('CF-Connecting-IP') || 'unknown';

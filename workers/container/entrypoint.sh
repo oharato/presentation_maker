@@ -16,4 +16,4 @@ cd /app
 
 # Video Workerを起動（メインプロセス）
 echo "Starting Video Worker..."
-exec npm start
+exec node dist/workers/container/video-worker.js

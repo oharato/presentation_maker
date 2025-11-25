@@ -2,7 +2,7 @@
  * Durable Objects: ジョブ管理とWebSocket接続管理
  */
 
-import type { Env } from '../src/types';
+import type { Env } from '../api/types';
 
 export class JobManager implements DurableObject {
     state: DurableObjectState;

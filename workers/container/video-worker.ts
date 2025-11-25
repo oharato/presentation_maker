@@ -4,10 +4,10 @@
  * Cloudflare Container内で動画生成処理を実行
  */
 
-import '@src/config'; // Load environment variables
-import { VideoGenerator } from '@src/services/video_generator';
-import { SlideRenderer } from '@src/services/slide_renderer';
-import { VoicevoxService } from '@src/services/voicevox';
+import '../../src/config'; // Load environment variables
+import { VideoGenerator } from '../../src/services/video_generator';
+import { SlideRenderer } from '../../src/services/slide_renderer';
+import { VoicevoxService } from '../../src/services/voicevox';
 import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import fs from 'fs-extra';
 import path from 'path';

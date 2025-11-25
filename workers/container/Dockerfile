@@ -26,17 +26,25 @@ RUN npm install -g pnpm
 
 # アプリケーションのセットアップ
 WORKDIR /app
+
+# プロジェクトルート全体をコピー
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install
 
-COPY . .
+# ソースコードをコピー
+COPY src ./src
+COPY workers/container ./workers/container
 
 # TypeScriptのビルド
-RUN pnpm run build
+WORKDIR /app/workers/container
+RUN npx tsc -p tsconfig.json
 
 # Puppeteerの設定
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
+ENV PUPPETEER_NO_SANDBOX=true
+ENV FFMPEG_PATH=ffmpeg
+ENV FFPROBE_PATH=ffprobe
 
 # Chromeのインストール (Puppeteer用)
 RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
@@ -46,8 +54,11 @@ RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key
     && rm -rf /var/lib/apt/lists/*
 
 # エントリーポイントスクリプト
-COPY entrypoint.sh /entrypoint.sh
+COPY workers/container/entrypoint.sh /entrypoint.sh
 RUN dos2unix /entrypoint.sh && chmod +x /entrypoint.sh
+
+# 実行時のワーキングディレクトリ
+WORKDIR /app/workers/container
 
 # VOICEVOXのポート
 EXPOSE 50021
