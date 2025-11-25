@@ -1,3 +1,4 @@
+import 'dotenv/config'; // Load environment variables first
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { serve } from '@hono/node-server';
@@ -59,7 +60,12 @@ app.get('/videos/:filename', async (c) => {
         return c.notFound();
     }
 });
-app.use('/*', serveStatic({ root: path.join(process.cwd(), 'web', 'dist') }));
+
+// Serve frontend static files
+// In monorepo, web build is at ../web/dist relative to apps/server
+const webDistPath = path.join(process.cwd(), '../web/dist');
+console.log('Serving static files from:', webDistPath);
+app.use('/*', serveStatic({ root: webDistPath }));
 
 // API routes
 app.route('/api', apiRoutes);

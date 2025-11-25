@@ -6,6 +6,7 @@
     "dev:cli": "pnpm --filter @presentation-maker/cli dev",
     "dev:server": "pnpm --filter @presentation-maker/server dev",
     "dev:web": "pnpm --filter @presentation-maker/web dev",
+    "dev:worker:api": "pnpm --filter @presentation-maker/worker-api dev",
     "docker:build": "docker build -t presentation-maker-worker -f apps/workers/container/Dockerfile .",
     "clean": "pnpm -r run clean",
     "test": "pnpm -r test"
