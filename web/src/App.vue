@@ -176,7 +176,6 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch } from 'vue';
-import { io, Socket } from 'socket.io-client';
 import { sherpaService, transformersService, type AudioEngine } from './services/audio';
 import { BrowserVideoGenerator } from './services/video';
 
@@ -193,7 +192,20 @@ interface JobProgress {
 }
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-const SOCKET_URL = import.meta.env.VITE_WS_URL || 'http://localhost:3001';
+// WebSocket URLの構築: API_URLのプロトコルとホストをベースにする
+const getWsUrl = () => {
+    if (import.meta.env.VITE_WS_URL) return import.meta.env.VITE_WS_URL;
+    
+    // API_URLから自動判定
+    try {
+        const url = new URL(API_URL);
+        const protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+        return `${protocol}//${url.host}/ws/connect/global`;
+    } catch (e) {
+        return 'ws://localhost:8787/ws/connect/global';
+    }
+};
+
 const STORAGE_KEY = 'presentation_maker_slides';
 
 const slides = ref<Slide[]>([]);
@@ -214,35 +226,107 @@ const transformersError = ref<string | null>(null);
 
 const videoSection = ref<HTMLElement | null>(null);
 
-let socket: Socket | null = null;
+let socket: WebSocket | null = null;
+let pingInterval: number | undefined;
+let reconnectTimeout: number | undefined;
 
 // データ永続化
 watch(slides, (newSlides) => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(newSlides));
 }, { deep: true });
 
-onMounted(() => {
-  socket = io(SOCKET_URL);
-  
-  socket.on('job:progress', (data: JobProgress) => {
-    currentJob.value = data;
-  });
-  
-  socket.on('job:completed', (data: { jobId: string; videoUrl: string }) => {
-    currentJob.value = null;
-    isGenerating.value = false;
-    videoUrl.value = API_URL + data.videoUrl;
+function connectWebSocket() {
+    if (socket?.readyState === WebSocket.OPEN) return;
+
+    const wsUrl = getWsUrl();
+    console.log('Connecting to WebSocket:', wsUrl);
     
-    setTimeout(() => {
-      videoSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 100);
-  });
-  
-  socket.on('job:failed', (data: { jobId: string; error: string }) => {
-    currentJob.value = null;
-    isGenerating.value = false;
-    alert(`エラー: ${data.error}`);
-  });
+    socket = new WebSocket(wsUrl);
+
+    socket.onopen = () => {
+        console.log('WebSocket Connected');
+        startHeartbeat();
+        
+        // 再接続時に進行中のジョブがあれば再参加
+        if (currentJob.value?.jobId) {
+            sendJson({
+                type: 'join:job',
+                payload: { jobId: currentJob.value.jobId }
+            });
+        }
+    };
+
+    socket.onmessage = (event) => {
+        try {
+            const data = JSON.parse(event.data);
+            handleWsMessage(data);
+        } catch (e) {
+            console.error('Failed to parse WS message:', e);
+        }
+    };
+
+    socket.onclose = () => {
+        console.log('WebSocket Closed');
+        stopHeartbeat();
+        // 3秒後に再接続
+        reconnectTimeout = window.setTimeout(connectWebSocket, 3000);
+    };
+
+    socket.onerror = (error) => {
+        console.error('WebSocket Error:', error);
+        socket?.close();
+    };
+}
+
+function sendJson(data: any) {
+    if (socket?.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify(data));
+    }
+}
+
+function startHeartbeat() {
+    stopHeartbeat();
+    pingInterval = window.setInterval(() => {
+        sendJson({ type: 'ping' });
+    }, 30000);
+}
+
+function stopHeartbeat() {
+    if (pingInterval) clearInterval(pingInterval);
+}
+
+function handleWsMessage(data: any) {
+    const { type, payload } = data;
+
+    switch (type) {
+        case 'job:progress':
+            currentJob.value = payload;
+            break;
+        
+        case 'job:completed':
+            currentJob.value = null;
+            isGenerating.value = false;
+            videoUrl.value = API_URL + (payload.videoUrl || `/api/videos/${payload.jobId}`);
+            
+            setTimeout(() => {
+                videoSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 100);
+            break;
+            
+        case 'job:failed':
+            currentJob.value = null;
+            isGenerating.value = false;
+            alert(`エラー: ${payload.error || '不明なエラーが発生しました'}`);
+            break;
+            
+        case 'pong':
+            // console.log('pong');
+            break;
+    }
+}
+
+onMounted(() => {
+  connectWebSocket();
   
   const saved = localStorage.getItem(STORAGE_KEY);
   if (saved) {
@@ -284,7 +368,9 @@ function updateBrowserMode() {
 }
 
 onUnmounted(() => {
-  socket?.disconnect();
+  stopHeartbeat();
+  if (reconnectTimeout) clearTimeout(reconnectTimeout);
+  socket?.close();
 });
 
 const loadSherpa = async () => {
@@ -419,20 +505,11 @@ async function generateVideo() {
     const data = await response.json();
     
     if (response.ok) {
-      // ジョブIDのルームに参加するためにREST API経由でなくSocket経由で参加リクエストを送る必要があるが、
-      // サーバー側 (Durable Object) の実装によっては、接続時にクエリパラメータ等で指定するか、
-      // あるいはサーバー側が自動的にブロードキャストする仕組みかもしれない。
-      // 現状のサーバー実装 (websocket.ts) は単純なfetchプロキシなので、
-      // クライアント側から明示的にメッセージを送る必要がある。
-      
-      // 接続が確立されているか確認してからjoinメッセージを送る
-      if (socket?.connected) {
-          socket.emit('join:job', { jobId: data.jobId });
-      } else {
-          socket?.once('connect', () => {
-              socket?.emit('join:job', { jobId: data.jobId });
-          });
-      }
+      // WebSocket経由でジョブルームに参加
+      sendJson({
+          type: 'join:job',
+          payload: { jobId: data.jobId }
+      });
 
       currentJob.value = {
         jobId: data.jobId,
