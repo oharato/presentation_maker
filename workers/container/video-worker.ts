@@ -16,7 +16,7 @@ import http from 'http';
 
 // HTTPサーバー起動 (Cloudflare Containers用)
 const PORT = process.env.PORT || 80;
-const server = http.createServer((req, res) => {
+const server = http.createServer((_req, res) => {
     res.writeHead(200);
     res.end('Video Worker is running');
 });

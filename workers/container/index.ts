@@ -36,12 +36,12 @@ export class VideoWorkerV2 extends Container {
 }
 
 export default {
-    async fetch(request: Request, env: any, ctx: any) {
+    async fetch(request: Request, env: any, _ctx: any) {
         // 固定のコンテナインスタンスを使用
         const container = env.VIDEO_WORKER.getByName("worker-instance");
         return await container.fetch(request);
     },
-    async scheduled(event: any, env: any, ctx: any) {
+    async scheduled(_event: any, env: any, _ctx: any) {
         // Cronトリガーで定期的にコンテナを起動/維持する
         const container = env.VIDEO_WORKER.getByName("worker-instance");
         await container.fetch("http://internal/keepalive");
