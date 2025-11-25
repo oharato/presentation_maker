@@ -1,23 +1,35 @@
+"use strict";
 /**
  * FFmpeg実行ユーティリティ
  *
  * fluent-ffmpegの代わりに、child_process.spawnを使用した
  * シンプルで保守性の高い実装
  */
-import { spawn } from 'child_process';
-import { promisify } from 'util';
-import { exec } from 'child_process';
-import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
-import ffprobeInstaller from '@ffprobe-installer/ffprobe';
-const execAsync = promisify(exec);
-export const FFMPEG_PATH = ffmpegInstaller.path;
-export const FFPROBE_PATH = ffprobeInstaller.path;
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.FFPROBE_PATH = exports.FFMPEG_PATH = void 0;
+exports.runFFmpeg = runFFmpeg;
+exports.getMediaDuration = getMediaDuration;
+exports.generateSilence = generateSilence;
+exports.concatMedia = concatMedia;
+exports.imageToVideo = imageToVideo;
+exports.mergeAudioVideo = mergeAudioVideo;
+const child_process_1 = require("child_process");
+const util_1 = require("util");
+const child_process_2 = require("child_process");
+const ffmpeg_1 = __importDefault(require("@ffmpeg-installer/ffmpeg"));
+const ffprobe_1 = __importDefault(require("@ffprobe-installer/ffprobe"));
+const execAsync = (0, util_1.promisify)(child_process_2.exec);
+exports.FFMPEG_PATH = process.env.FFMPEG_PATH || ffmpeg_1.default.path;
+exports.FFPROBE_PATH = process.env.FFPROBE_PATH || ffprobe_1.default.path;
 /**
  * FFmpegコマンドを実行
  */
-export async function runFFmpeg(args) {
+async function runFFmpeg(args) {
     return new Promise((resolve, reject) => {
-        const process = spawn(FFMPEG_PATH, args);
+        const process = (0, child_process_1.spawn)(exports.FFMPEG_PATH, args);
         let stderr = '';
         process.stderr.on('data', (data) => {
             stderr += data.toString();
@@ -38,14 +50,14 @@ export async function runFFmpeg(args) {
 /**
  * FFprobeでメディアファイルの情報を取得
  */
-export async function getMediaDuration(filePath) {
-    const { stdout } = await execAsync(`"${FFPROBE_PATH}" -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${filePath}"`);
+async function getMediaDuration(filePath) {
+    const { stdout } = await execAsync(`"${exports.FFPROBE_PATH}" -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${filePath}"`);
     return parseFloat(stdout.trim());
 }
 /**
  * 無音音声を生成
  */
-export async function generateSilence(duration, outputPath, options = {}) {
+async function generateSilence(duration, outputPath, options = {}) {
     const { sampleRate = 24000, channels = 1 } = options;
     const args = [
         '-f', 'lavfi',
@@ -62,7 +74,7 @@ export async function generateSilence(duration, outputPath, options = {}) {
 /**
  * 複数のメディアファイルを結合
  */
-export async function concatMedia(files, outputPath, options = {}) {
+async function concatMedia(files, outputPath, options = {}) {
     if (files.length === 0) {
         throw new Error('No files to concatenate');
     }
@@ -94,7 +106,7 @@ export async function concatMedia(files, outputPath, options = {}) {
 /**
  * 画像から動画を作成
  */
-export async function imageToVideo(imagePath, duration, outputPath, options = {}) {
+async function imageToVideo(imagePath, duration, outputPath, options = {}) {
     const { fps = 30, resolution = '1920x1080' } = options;
     const args = [
         '-loop', '1',
@@ -112,7 +124,7 @@ export async function imageToVideo(imagePath, duration, outputPath, options = {}
 /**
  * 音声と動画を結合
  */
-export async function mergeAudioVideo(videoPath, audioPath, outputPath) {
+async function mergeAudioVideo(videoPath, audioPath, outputPath) {
     const args = [
         '-i', videoPath,
         '-i', audioPath,

@@ -1,8 +1,10 @@
 import { videoQueue, VideoJobData, JobProgress } from '../queue';
-import { VoicevoxService } from '../../src/services/voicevox';
-import { SlideRenderer } from '../../src/services/slide_renderer';
-import { VideoGenerator } from '../../src/services/video_generator';
-import { config } from '../../src/config';
+import {
+    VoicevoxService,
+    SlideRenderer,
+    VideoGenerator,
+    config
+} from '@presentation-maker/core';
 import fs from 'fs-extra';
 import path from 'path';
 import { Server as SocketIOServer } from 'socket.io';

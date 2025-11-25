@@ -1,0 +1,19 @@
+{
+  "name": "@presentation-maker/worker-container",
+  "version": "1.0.0",
+  "main": "dist/video-worker.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/video-worker.js"
+  },
+  "dependencies": {
+    "@presentation-maker/core": "workspace:*",
+    "@aws-sdk/client-s3": "^3.939.0",
+    "fs-extra": "^11.3.2"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^11.0.4",
+    "@types/node": "^24.10.1",
+    "typescript": "^5.9.3"
+  }
+}

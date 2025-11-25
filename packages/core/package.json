@@ -1,0 +1,23 @@
+{
+  "name": "@presentation-maker/core",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@ffprobe-installer/ffprobe": "^2.1.2",
+    "axios": "^1.13.2",
+    "dotenv": "^17.2.3",
+    "fs-extra": "^11.3.2",
+    "marked": "^17.0.1",
+    "puppeteer": "^24.31.0"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^11.0.4",
+    "@types/node": "^24.10.1",
+    "typescript": "^5.9.3"
+  }
+}

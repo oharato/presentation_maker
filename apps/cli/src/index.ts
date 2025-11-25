@@ -1,12 +1,17 @@
 import fs from 'fs-extra';
 import path from 'path';
 import { glob } from 'glob';
-import { VoicevoxService } from './services/voicevox';
-import { SlideRenderer } from './services/slide_renderer';
-import { VideoGenerator } from './services/video_generator';
-import { config } from './config';
+import {
+    VoicevoxService,
+    SlideRenderer,
+    VideoGenerator,
+    config
+} from '@presentation-maker/core';
 
-const OUTPUT_DIR = path.join(process.cwd(), 'output');
+// Assume running from apps/cli, project root is two levels up
+const PROJECT_ROOT = path.resolve(process.cwd(), '../../');
+const INPUT_DIR = path.join(PROJECT_ROOT, 'input');
+const OUTPUT_DIR = path.join(PROJECT_ROOT, 'output');
 const FILE_PATTERN = /^(\d+)__(.*)\.(md|txt)$/;
 const DEFAULT_DURATION = 5;
 
@@ -19,7 +24,8 @@ interface SlideGroup {
 type SlideGroups = Map<string, SlideGroup>;
 
 async function findInputFiles(): Promise<string[]> {
-    return await glob('input/*');
+    // Search in the absolute path of input directory
+    return await glob(path.join(INPUT_DIR, '*'));
 }
 
 function groupFilesBySlideId(files: string[]): SlideGroups {

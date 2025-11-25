@@ -1,7 +1,7 @@
 {
     "compilerOptions": {
         "target": "ES2020",
-        "module": "CommonJS",
+        "module": "ESNext",
         "moduleResolution": "node",
         "outDir": "./dist",
         "rootDir": "../../",
@@ -19,8 +19,8 @@
         ]
     },
     "include": [
-        "video-worker.ts",
         "index.ts",
+        "video-worker.ts",
         "../../src/**/*"
     ]
 }
