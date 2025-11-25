@@ -159,6 +159,9 @@ async function main() {
                 }
 
                 // ジョブがない場合は待機 (10秒)
+                if (Date.now() % 60000 < 10000) { // およそ1分ごとにログ出力
+                    console.log('Waiting for jobs... (Idle)');
+                }
                 await new Promise(resolve => setTimeout(resolve, 10000));
                 continue;
             }

@@ -127,7 +127,6 @@ api.get('/jobs/:id', async (c) => {
         }
 
         return c.json(status);
-        return c.json(status);
     } catch (error) {
         console.error('Job status error:', error);
         return c.json({ error: 'Failed to get job status' }, 500);

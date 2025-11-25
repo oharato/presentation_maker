@@ -419,11 +419,25 @@ async function generateVideo() {
     const data = await response.json();
     
     if (response.ok) {
-      socket?.emit('join:job', { jobId: data.jobId });
+      // ジョブIDのルームに参加するためにREST API経由でなくSocket経由で参加リクエストを送る必要があるが、
+      // サーバー側 (Durable Object) の実装によっては、接続時にクエリパラメータ等で指定するか、
+      // あるいはサーバー側が自動的にブロードキャストする仕組みかもしれない。
+      // 現状のサーバー実装 (websocket.ts) は単純なfetchプロキシなので、
+      // クライアント側から明示的にメッセージを送る必要がある。
+      
+      // 接続が確立されているか確認してからjoinメッセージを送る
+      if (socket?.connected) {
+          socket.emit('join:job', { jobId: data.jobId });
+      } else {
+          socket?.once('connect', () => {
+              socket?.emit('join:job', { jobId: data.jobId });
+          });
+      }
+
       currentJob.value = {
         jobId: data.jobId,
         progress: 0,
-        message: 'キューに追加されました',
+        message: 'キューに追加されました (待機中...)',
       };
     } else {
       throw new Error(data.error);
