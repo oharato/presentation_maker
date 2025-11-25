@@ -178,8 +178,11 @@ export class JobManager implements DurableObject {
         });
 
         // 関連するWebSocketセッションに通知
+        const eventType = data.status === 'completed' ? 'job:completed' :
+            data.status === 'failed' ? 'job:failed' : 'job:progress';
+
         await this.broadcastToJob(jobId, {
-            type: 'job:progress',
+            type: eventType,
             payload: data,
         });
 
