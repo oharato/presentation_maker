@@ -8,7 +8,7 @@
     "build": "vue-tsc -b && vite build",
     "build:staging": "vue-tsc -b && vite build --mode staging",
     "preview": "vite preview",
-    "deploy": "pnpm run build && wrangler pages deploy dist --project-name presentation-maker",
+    "deploy": "pnpm run build && rm -rf dist/models && wrangler pages deploy dist --project-name presentation-maker",
     "test": "vitest run --environment jsdom"
   },
   "dependencies": {
