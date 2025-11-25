@@ -1,6 +1,6 @@
 {
     "name": "presentation-maker-worker",
-    "main": "dist/workers/container/index.js",
+    "main": "dist/index.js",
     "compatibility_date": "2024-01-01",
     "compatibility_flags": [
         "nodejs_compat"
@@ -34,7 +34,7 @@
             "containers": [
                 {
                     "name": "video-worker",
-                    "image": "../../Dockerfile",
+                    "image": "Dockerfile",
                     "class_name": "VideoWorkerV2",
                     "instance_type": "standard-1"
                 }

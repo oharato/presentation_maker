@@ -1,5 +1,5 @@
 {
-  "name": "web",
+  "name": "@presentation-maker/web",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -8,6 +8,7 @@
     "build": "vue-tsc -b && vite build",
     "build:staging": "vue-tsc -b && vite build --mode staging",
     "preview": "vite preview",
+    "deploy": "pnpm run build && wrangler pages deploy dist --project-name presentation-maker",
     "test": "vitest run --environment jsdom"
   },
   "dependencies": {
@@ -32,6 +33,7 @@
     "typescript": "~5.9.3",
     "vite": "^7.2.2",
     "vitest": "^4.0.13",
-    "vue-tsc": "^3.1.3"
+    "vue-tsc": "^3.1.3",
+    "wrangler": "^4.50.0"
   }
 }

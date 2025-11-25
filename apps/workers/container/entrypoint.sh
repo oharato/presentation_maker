@@ -13,4 +13,4 @@ echo "VOICEVOX started!"
 
 # Video Workerを起動（メインプロセス）
 echo "Starting Video Worker..."
-exec node dist/workers/container/video-worker.js
+exec node dist/video-worker.js
