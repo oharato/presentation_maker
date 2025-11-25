@@ -8,13 +8,11 @@
 import { spawn } from 'child_process';
 import { promisify } from 'util';
 import { exec } from 'child_process';
-import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
-import ffprobeInstaller from '@ffprobe-installer/ffprobe';
-
+// Use system-installed ffmpeg/ffprobe in container
 const execAsync = promisify(exec);
 
-export const FFMPEG_PATH = ffmpegInstaller.path;
-export const FFPROBE_PATH = ffprobeInstaller.path;
+export const FFMPEG_PATH = 'ffmpeg';
+export const FFPROBE_PATH = 'ffprobe';
 
 /**
  * FFmpegコマンドを実行
