@@ -78,6 +78,24 @@ start-redis.bat
 
 ## 実行
 
+### Docker Compose を使用した実行 (推奨)
+
+全てのサービス (Web, API, Worker, Voicevox) を一括で起動できます。
+
+```bash
+docker compose -f docker-compose.local.yml up
+```
+
+- Web UI: http://localhost:5173
+- API: http://localhost:8787
+- Worker: http://localhost:8080 (内部通信用)
+- Voicevox: http://localhost:50021
+
+停止するには:
+```bash
+docker compose -f docker-compose.local.yml down
+```
+
 ### CLIモード
 ```bash
 # 開発実行

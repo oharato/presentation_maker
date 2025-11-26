@@ -12,3 +12,4 @@ web/public/models/sherpa-onnx/**/*.onnx
 web/public/models/sherpa-onnx/**/*.bin
 .wrangler
 memo.md
+.pnpm-store/

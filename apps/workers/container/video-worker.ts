@@ -32,19 +32,21 @@ const API_URL = process.env.CONTAINER_API_URL || 'http://host.docker.internal:87
 const API_TOKEN = process.env.CONTAINER_API_TOKEN || 'dev-token';
 const IDLE_TIMEOUT = 5 * 60 * 1000; // 5分
 
-const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID!;
-const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID!;
-const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY!;
+const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID;
+const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID || '';
+const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY || '';
 const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME || 'presentation-videos';
 const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL || '';
+const R2_ENDPOINT = process.env.R2_ENDPOINT || (R2_ACCOUNT_ID ? `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com` : undefined);
 const VOICEVOX_URL = process.env.VOICEVOX_URL || 'http://127.0.0.1:50021';
 
 // R2クライアント (S3互換)
 // R2クライアント (S3互換)
-console.log(`Initializing S3Client with endpoint: https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`);
+console.log(`Initializing S3Client with endpoint: ${R2_ENDPOINT}`);
 const s3Client = new S3Client({
     region: 'us-east-1', // R2互換のためus-east-1を指定
-    endpoint: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+    endpoint: R2_ENDPOINT,
+    forcePathStyle: true,
     credentials: {
         accessKeyId: R2_ACCESS_KEY_ID,
         secretAccessKey: R2_SECRET_ACCESS_KEY,

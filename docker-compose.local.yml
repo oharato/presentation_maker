@@ -1,0 +1,79 @@
+services:
+  web:
+    image: node:24
+    working_dir: /app
+    volumes:
+      - web_node_modules:/app/node_modules
+      - web_pnpm_store:/app/.pnpm-store
+      - .:/app
+    ports:
+      - "5173:5173"
+    environment:
+      - CI=true
+      - VITE_API_URL=http://localhost:8787
+    command: /bin/sh -c "npm install -g pnpm && pnpm install && pnpm dev:web --host"
+
+  api:
+    image: node:24
+    working_dir: /app
+    volumes:
+      - api_node_modules:/app/node_modules
+      - api_pnpm_store:/app/.pnpm-store
+      - .:/app
+    ports:
+      - "8787:8787"
+    environment:
+      - CI=true
+    command: /bin/sh -c "npm install -g pnpm && pnpm install && pnpm dev:worker:api"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8787/api/internal/queue/next"]
+      interval: 5s
+      timeout: 5s
+      retries: 100
+
+  video-worker:
+    build:
+      context: .
+      dockerfile: apps/workers/container/Dockerfile
+    container_name: presentation-maker-local-worker
+    environment:
+      # ホスト側のWrangler (API) へアクセスするための設定
+      # Linux環境で host.docker.internal を使用する場合、extra_hosts の設定が必要な場合があります
+      CONTAINER_API_URL: http://host.docker.internal:8787
+      VOICEVOX_URL: http://127.0.0.1:50021
+      R2_BUCKET_NAME: presentation-videos
+      # Use MinIO locally as S3-compatible R2 replacement
+      R2_ENDPOINT: http://minio:9000
+      R2_ACCESS_KEY_ID: minioadmin
+      R2_SECRET_ACCESS_KEY: minioadmin
+      R2_PUBLIC_URL: http://localhost:9000/presentation-videos
+    ports:
+      - "8080:80" # WorkerへのHTTPアクセス用
+      - "50021:50021" # Voicevox確認用
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+
+  minio:
+    image: minio/minio:latest
+    container_name: presentation-maker-minio
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    restart: unless-stopped
+
+volumes:
+  minio_data:
+  web_node_modules:
+  api_node_modules:
+  web_pnpm_store:
+  api_pnpm_store:

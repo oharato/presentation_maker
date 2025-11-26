@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "index.ts",
   "scripts": {
-    "dev": "wrangler dev",
+    "dev": "wrangler dev --env development --ip 0.0.0.0 --port 8787",
     "deploy": "wrangler deploy -e production"
   },
   "dependencies": {

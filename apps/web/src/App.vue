@@ -304,14 +304,20 @@ function handleWsMessage(data: any) {
             break;
         
         case 'job:completed':
-            currentJob.value = null;
-            isGenerating.value = false;
+          currentJob.value = null;
+          isGenerating.value = false;
+          // If the worker provided an absolute URL, use it directly.
+          // Otherwise prefix with API_URL so relative paths (or API proxy paths) work.
+          if (payload.videoUrl && /^https?:\/\//.test(payload.videoUrl)) {
+            videoUrl.value = payload.videoUrl;
+          } else {
             videoUrl.value = API_URL + (payload.videoUrl || `/api/videos/${payload.jobId}`);
-            
-            setTimeout(() => {
-                videoSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }, 100);
-            break;
+          }
+
+          setTimeout(() => {
+            videoSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }, 100);
+          break;
             
         case 'job:failed':
             currentJob.value = null;
