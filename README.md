@@ -68,16 +68,41 @@ pnpm dev:workers
 docker-compose -f docker-compose.cloudflare.yml up --build
 ```
 
+## ディレクトリ構造
+
+```
+presentation_maker/
+├── apps/
+│   ├── cli/              # CLIツール
+│   ├── server/           # ローカル開発用バックエンド (Node.js/Express)
+│   ├── web/              # フロントエンド (Vue.js)
+│   └── workers/
+│       ├── api/          # Cloudflare Workers (API Gateway)
+│       └── container/    # 動画生成ワーカー (Cloudflare Container)
+├── packages/
+│   └── core/             # 共通ロジック (動画生成, Voicevoxクライアントなど)
+├── input/                # CLI用入力ファイル
+└── output/               # CLI用出力ファイル
+```
+
 ## デプロイ
 
 Cloudflareへのデプロイ手順は [Cloudflare デプロイガイド](docs/CLOUDFLARE_DEPLOY_GUIDE.md) を参照してください。
 
+### コンテナデプロイ (自動化済み)
+Cloudflare Containersへのデプロイは、イメージのビルド、タグ付け、プッシュ、そしてWorker設定の更新まで1つのコマンドで自動化されています。
+
 ```bash
-# 全体デプロイ
-pnpm deploy:all
+# コンテナとWorkerをデプロイ
+pnpm deploy:container
 ```
 
-## ドキュメント
+このコマンドは自動的に日時ベースのタグを生成し、`wrangler.jsonc` を更新してデプロイを行います。
+
+```bash
+# WebアプリとAPIも含む全体デプロイ
+pnpm deploy:all
+```
 
 *   [**アーキテクチャ解説 (ブログ)**](docs/ARCHITECTURE_BLOG.md) - 技術選定の理由と構成図
 *   [**デプロイガイド**](docs/CLOUDFLARE_DEPLOY_GUIDE.md) - 本番環境へのデプロイ手順

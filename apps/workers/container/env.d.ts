@@ -5,5 +5,6 @@ declare module 'cloudflare:containers' {
         onStart(): void | Promise<void>;
         onStop(): void | Promise<void>;
         onError(error: unknown): void | Promise<void>;
+        getTcpPort(port: number): { fetch: (request: Request | string) => Promise<Response> };
     }
 }

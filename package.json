@@ -11,7 +11,7 @@
     "deploy": "pnpm run build && pnpm --filter \"./apps/*\" -r --if-present run deploy",
     "deploy:web": "pnpm --filter @presentation-maker/web run deploy",
     "deploy:api": "pnpm --filter @presentation-maker/worker-api run deploy",
-    "deploy:container": "pnpm run docker:build && npx wrangler containers push presentation-maker-worker && pnpm --filter @presentation-maker/worker-container run deploy",
+    "deploy:container": "TAG=$(date +%Y%m%d%H%M%S) && docker build -t presentation-maker-worker:$TAG -f apps/workers/container/Dockerfile . && npx wrangler containers push presentation-maker-worker:$TAG && node apps/workers/container/update-wrangler-jsonc.js $TAG && pnpm --filter @presentation-maker/worker-container run deploy",
     "clean": "pnpm -r run clean",
     "test": "pnpm -r test"
   },

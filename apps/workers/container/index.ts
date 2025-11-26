@@ -45,7 +45,9 @@ export class VideoWorkerV2 implements DurableObject {
             return new Response("No container associated with this Durable Object.", { status: 400 });
         }
         // Forward the request directly to the managed container
-        return this.state.container.fetch(request);
+        // Use getTcpPort(80) to access the container's HTTP service
+        // @ts-ignore - types might be missing getTcpPort
+        return this.state.container.getTcpPort(80).fetch(request);
     }
 }
 
