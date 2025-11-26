@@ -306,12 +306,32 @@ function handleWsMessage(data: any) {
         case 'job:completed':
           currentJob.value = null;
           isGenerating.value = false;
-          // If the worker provided an absolute URL, use it directly.
-          // Otherwise prefix with API_URL so relative paths (or API proxy paths) work.
-          if (payload.videoUrl && /^https?:\/\//.test(payload.videoUrl)) {
-            videoUrl.value = payload.videoUrl;
+          // Prefer API proxy download URL for recorded jobs to avoid CORS/ACL
+          // problems when objects are stored in local MinIO/R2. If the jobId
+          // is present, always use the API download proxy which handles
+          // authentication/streaming and avoids direct public access issues.
+          if (payload?.jobId) {
+            videoUrl.value = `${API_URL}/api/videos/${payload.jobId}/download`;
+          } else if (payload.videoUrl && /^https?:\/\//.test(payload.videoUrl)) {
+            // If worker returned a direct MinIO/R2 URL, try to extract a jobId
+            // from the path (jobs/<jobId>/final_presentation.mp4). If we can
+            // extract it, prefer the API proxy; otherwise fall back to the
+            // absolute URL.
+            try {
+              const parsed = new URL(payload.videoUrl);
+              const jobsMatch = parsed.pathname.match(/jobs\/([-0-9a-fA-F]+)\//);
+              if (jobsMatch && jobsMatch[1]) {
+                const extractedJobId = jobsMatch[1];
+                videoUrl.value = `${API_URL}/api/videos/${extractedJobId}/download`;
+              } else {
+                videoUrl.value = payload.videoUrl;
+              }
+            } catch (e) {
+              videoUrl.value = payload.videoUrl;
+            }
           } else {
-            videoUrl.value = API_URL + (payload.videoUrl || `/api/videos/${payload.jobId}`);
+            // Last-resort: prefix with API_URL so relative paths still work.
+            videoUrl.value = API_URL + (payload.videoUrl || '');
           }
 
           setTimeout(() => {

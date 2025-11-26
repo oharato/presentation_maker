@@ -20,7 +20,20 @@ export class ContainerManager {
      */
     async startContainer(): Promise<void> {
         // コンテナAPIのURLが設定されていない場合はスキップ（開発環境など）
-        if (!this.env.CONTAINER_API_URL) {
+        // 本来は Cloudflare Worker の Bindings (c.env) を参照するが、
+        // wrangler dev 環境や Docker 内で実行する場合はプロセス環境変数に設定していることがある。
+        const containerApiUrl = (this.env && (this.env as any).CONTAINER_API_URL) || (typeof process !== 'undefined' ? process.env.CONTAINER_API_URL : undefined);
+        const containerApiToken = (this.env && (this.env as any).CONTAINER_API_TOKEN) || (typeof process !== 'undefined' ? process.env.CONTAINER_API_TOKEN : undefined);
+
+        // 開発環境であれば docker-compose のサービス名を使ったフォールバックを許容する
+        const envName = (this.env && (this.env as any).ENVIRONMENT) || (typeof process !== 'undefined' ? process.env.ENVIRONMENT : undefined);
+        let resolvedContainerApiUrl = containerApiUrl;
+        if (!resolvedContainerApiUrl && envName === 'development') {
+            resolvedContainerApiUrl = 'http://video-worker:80';
+            console.log('Container API URL not provided in bindings; using development fallback:', resolvedContainerApiUrl);
+        }
+
+        if (!resolvedContainerApiUrl) {
             console.log('Container API URL not set, skipping container start');
             return;
         }
@@ -28,11 +41,11 @@ export class ContainerManager {
         try {
             console.log('Starting container...');
 
-            const response = await fetch(this.env.CONTAINER_API_URL, {
+            const response = await fetch(resolvedContainerApiUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${this.env.CONTAINER_API_TOKEN || ''}`,
+                    'Authorization': `Bearer ${containerApiToken || ''}`,
                 },
                 body: JSON.stringify({
                     action: 'start',

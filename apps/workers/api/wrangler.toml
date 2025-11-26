@@ -20,7 +20,7 @@ new_classes = ["JobManager"]
 # 開発環境 (wrangler dev)
 [env.development]
 name = "presentation-maker-api-dev"
-vars = { ENVIRONMENT = "development", MOCK_QUEUE = "true" }
+vars = { ENVIRONMENT = "development", MOCK_QUEUE = "true", CONTAINER_API_URL = "http://video-worker:80", CONTAINER_API_TOKEN = "dev-token", R2_ENDPOINT = "http://minio:9000", R2_ACCESS_KEY_ID = "minioadmin", R2_SECRET_ACCESS_KEY = "minioadmin", R2_BUCKET_NAME = "presentation-videos", R2_PUBLIC_URL = "http://minio:9000/presentation-videos" }
 [[env.development.r2_buckets]]
 binding = "PRESENTATION_MAKER_BUCKET"
 bucket_name = "presentation-videos"

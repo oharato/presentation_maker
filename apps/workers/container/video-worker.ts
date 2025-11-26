@@ -30,7 +30,10 @@ server.listen(PORT, () => {
 // 環境変数
 const API_URL = process.env.CONTAINER_API_URL || 'http://host.docker.internal:8787';
 const API_TOKEN = process.env.CONTAINER_API_TOKEN || 'dev-token';
-const IDLE_TIMEOUT = 5 * 60 * 1000; // 5分
+// アイドル時のタイムアウト (ms)。環境変数 `IDLE_TIMEOUT_MS` で上書き可能。
+// `DISABLE_IDLE_SHUTDOWN=true` を渡すとアイドル時にコンテナを終了しない（開発用）
+const IDLE_TIMEOUT = parseInt(process.env.IDLE_TIMEOUT_MS || String(5 * 60 * 1000), 10);
+const DISABLE_IDLE_SHUTDOWN = process.env.DISABLE_IDLE_SHUTDOWN === 'true';
 
 const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID;
 const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID || '';
@@ -79,7 +82,7 @@ async function downloadFileFromR2(jobId: string, filePath: string, destinationPa
 /**
  * R2にファイルをアップロード
  */
-async function uploadFileToR2(jobId: string, filePath: string, fileContent: Buffer, contentType: string): Promise<void> {
+async function uploadFileToR2(jobId: string, filePath: string, fileContent: Buffer, contentType: string): Promise<string> {
     const key = `jobs/${jobId}/${filePath}`;
     await s3Client.send(new PutObjectCommand({
         Bucket: R2_BUCKET_NAME,
@@ -87,40 +90,59 @@ async function uploadFileToR2(jobId: string, filePath: string, fileContent: Buff
         Body: fileContent,
         ContentType: contentType,
     }));
-    console.log(`Uploaded ${filePath} to R2 as ${key}`);
+    const publicUrl = R2_PUBLIC_URL ? `${R2_PUBLIC_URL}/jobs/${jobId}/${filePath}` : `s3://${R2_BUCKET_NAME}/${key}`;
+    console.log(`Uploaded ${filePath} to R2 as ${key}. Public URL: ${publicUrl}`);
+    return publicUrl;
 }
 
 /**
  * ジョブを取得 (API経由)
  */
 async function getJob() {
-    try {
-        const response = await fetch(`${API_URL}/api/internal/queue/next`, {
-            headers: {
-                'Authorization': `Bearer ${API_TOKEN}`,
-                'User-Agent': 'VideoWorker/1.0',
-            },
-        });
+    const maxAttempts = 4;
+    const baseDelay = 2000; // ms
 
-        if (response.status === 204) {
-            return null;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+            const response = await fetch(`${API_URL}/api/internal/queue/next`, {
+                headers: {
+                    'Authorization': `Bearer ${API_TOKEN}`,
+                    'User-Agent': 'VideoWorker/1.0',
+                },
+            });
+
+            if (response.status === 204) {
+                return null;
+            }
+
+            if (response.status === 429) {
+                console.warn('Rate limited (429). Waiting before retry...');
+                await new Promise(resolve => setTimeout(resolve, 30000)); // 30秒待機
+                return null;
+            }
+
+            if (!response.ok) {
+                throw new Error(`Failed to get job: ${response.status} ${response.statusText}`);
+            }
+
+            return await response.json();
+        } catch (error: any) {
+            const isLast = attempt === maxAttempts;
+            console.error(`Error getting job (attempt ${attempt}/${maxAttempts}):`, error && error.message ? error.message : error);
+            if (isLast) {
+                console.error('Max attempts reached while fetching job. Will wait before next poll.');
+                return null;
+            }
+
+            // Exponential backoff with jitter
+            const delay = Math.round(baseDelay * Math.pow(2, attempt - 1) * (0.75 + Math.random() * 0.5));
+            console.log(`Retrying getJob after ${delay}ms...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
         }
-
-        if (response.status === 429) {
-            console.warn('Rate limited (429). Waiting before retry...');
-            await new Promise(resolve => setTimeout(resolve, 30000)); // 30秒待機
-            return null;
-        }
-
-        if (!response.ok) {
-            throw new Error(`Failed to get job: ${response.statusText}`);
-        }
-
-        return await response.json();
-    } catch (error) {
-        console.error('Error getting job:', error);
-        return null;
     }
+
+    return null;
 }
 
 /**
@@ -157,7 +179,7 @@ async function main() {
 
             if (!job) {
                 // アイドルチェック
-                if (Date.now() - lastActivityTime > IDLE_TIMEOUT) {
+                if (!DISABLE_IDLE_SHUTDOWN && IDLE_TIMEOUT > 0 && Date.now() - lastActivityTime > IDLE_TIMEOUT) {
                     console.log('Idle timeout reached. Shutting down container...');
                     process.exit(0); // コンテナを終了
                 }
@@ -297,6 +319,7 @@ async function main() {
 
                 // 6. Concatenate all final slide videos
                 let finalPresentationPath = '';
+                let finalPublicUrl: string | undefined = undefined;
                 if (finalVideoPaths.length > 0) {
                     finalPresentationPath = path.join(outputDir, 'final_presentation.mp4');
                     await videoGenerator.concatVideos(finalVideoPaths, finalPresentationPath);
@@ -305,14 +328,14 @@ async function main() {
                     // 7. Upload final presentation to R2
                     const fileContent = await fs.readFile(finalPresentationPath);
                     const key = `final_presentation.mp4`; // Key within the job folder
-                    await uploadFileToR2(jobId, key, fileContent, 'video/mp4');
+                    finalPublicUrl = await uploadFileToR2(jobId, key, fileContent, 'video/mp4');
                 }
 
                 // 8. Completed notification
                 await updateJobStatus(jobId, 'completed', {
                     progress: 100,
                     message: 'Video generation completed',
-                    videoUrl: finalPresentationPath ? `${R2_PUBLIC_URL}/jobs/${jobId}/final_presentation.mp4` : undefined,
+                    videoUrl: typeof finalPublicUrl !== 'undefined' ? finalPublicUrl : (finalPresentationPath ? `${R2_PUBLIC_URL}/jobs/${jobId}/final_presentation.mp4` : undefined),
                 });
 
             } catch (error: any) { // Catch for specific job failure

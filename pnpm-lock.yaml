@@ -164,6 +164,9 @@ importers:
 
   apps/workers/api:
     dependencies:
+      '@aws-sdk/client-s3':
+        specifier: ^3.939.0
+        version: 3.939.0
       hono:
         specifier: ^4.10.6
         version: 4.10.6

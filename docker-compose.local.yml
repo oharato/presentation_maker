@@ -24,9 +24,14 @@ services:
       - "8787:8787"
     environment:
       - CI=true
+      # 開発用: API からコンテナ起動リクエストを飛ばす先 (docker-compose 内のサービス名)
+      - CONTAINER_API_URL=http://video-worker:80
+      - CONTAINER_API_TOKEN=dev-token
     command: /bin/sh -c "npm install -g pnpm && pnpm install && pnpm dev:worker:api"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8787/api/internal/queue/next"]
+      # Healthcheck must NOT call the internal queue endpoint (it would dequeue jobs).
+      # Use a safe read-only health endpoint instead.
+      test: ["CMD", "curl", "-f", "http://localhost:8787/health"]
       interval: 5s
       timeout: 5s
       retries: 100
@@ -47,6 +52,8 @@ services:
       R2_ACCESS_KEY_ID: minioadmin
       R2_SECRET_ACCESS_KEY: minioadmin
       R2_PUBLIC_URL: http://localhost:9000/presentation-videos
+      # 開発用: アイドル時シャットダウンを無効化
+      DISABLE_IDLE_SHUTDOWN: "true"
     ports:
       - "8080:80" # WorkerへのHTTPアクセス用
       - "50021:50021" # Voicevox確認用

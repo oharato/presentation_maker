@@ -6,6 +6,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { JobQueue } from '../../utils/queue';
 import { v4 as uuidv4 } from 'uuid';
+import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 
 const api = new Hono<{ Bindings: Env }>();
 
@@ -183,23 +184,48 @@ api.get('/videos/:id', async (c) => {
     try {
         const jobId = c.req.param('id');
         const key = `jobs/${jobId}/final_presentation.mp4`;
+        // First, check the Durable Object for job metadata (worker may store videoUrl)
+        try {
+            const queue = new JobQueue(c.env as any);
+            const info = await queue.getJobInfo(jobId);
 
-        // R2からオブジェクトの存在確認
-        const object = await c.env.PRESENTATION_MAKER_BUCKET.head(key);
+            if (info && info.videoUrl) {
+                // If the DO has a public URL, return the proxy URL but include info from DO
+                const url = new URL(c.req.url);
+                const proxyUrl = `${url.protocol}//${url.host}/api/videos/${jobId}/download`;
 
-        if (!object) {
-            return c.json({ error: 'Video not found' }, 404);
+                return c.json({
+                    url: proxyUrl,
+                    original: info.videoUrl,
+                    uploaded: info.updatedAt || null,
+                });
+            }
+        } catch (doErr) {
+            console.warn('Failed to read job info from DO:', doErr);
         }
 
-        // Workers経由のプロキシURL（R2は署名付きURLをネイティブサポートしていないため）
-        const url = new URL(c.req.url);
-        const proxyUrl = `${url.protocol}//${url.host}/api/videos/${jobId}/download`;
+        // If no DO metadata, fall back to checking R2 bucket
+        try {
+            if (c.env && (c.env as any).PRESENTATION_MAKER_BUCKET) {
+                const object = await c.env.PRESENTATION_MAKER_BUCKET.head(key);
 
-        return c.json({
-            url: proxyUrl,
-            size: object.size,
-            uploaded: object.uploaded,
-        });
+                if (!object) {
+                    return c.json({ error: 'Video not found' }, 404);
+                }
+
+                // Workers経由のプロキシURL（R2は署名付きURLをネイティブサポートしていないため）
+                const url = new URL(c.req.url);
+                const proxyUrl = `${url.protocol}//${url.host}/api/videos/${jobId}/download`;
+
+                return c.json({
+                    url: proxyUrl,
+                    size: object.size,
+                    uploaded: object.uploaded,
+                });
+            }
+        } catch (e) {
+            console.warn('R2 head failed, will attempt other fallbacks:', e);
+        }
     } catch (error) {
         console.error('Video URL error:', error);
         return c.json({ error: 'Failed to get video URL' }, 500);
@@ -213,22 +239,101 @@ api.get('/videos/:id/download', async (c) => {
     try {
         const jobId = c.req.param('id');
         const key = `jobs/${jobId}/final_presentation.mp4`;
+        // Prefer reading the worker-provided public URL from the Durable Object
+        try {
+            const queue = new JobQueue(c.env as any);
+            const info = await queue.getJobInfo(jobId);
+            if (info && info.videoUrl) {
+                // Normalize hostname for Docker: if the worker reported localhost:9000,
+                // replace with the internal MinIO hostname defined in R2_PUBLIC_URL or by host mapping.
+                let targetUrl = info.videoUrl as string;
+                try {
+                    const parsed = new URL(targetUrl);
+                    if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
+                        const publicBase = (c.env as any)?.R2_PUBLIC_URL || 'http://minio:9000/presentation-videos';
+                        // Replace the base (protocol + host + possible path) with publicBase
+                        const suffix = parsed.pathname.replace(/^\/+/,'');
+                        // If original contains /presentation-videos/... preserve suffix after that
+                        const idx = suffix.indexOf('presentation-videos/');
+                        const finalPath = idx >=0 ? suffix.substring(idx + 'presentation-videos/'.length) : suffix;
+                        targetUrl = `${publicBase}/${finalPath}`;
+                    }
+                } catch (e) {
+                    // leave targetUrl as-is
+                }
 
-        // R2からオブジェクトを取得
-        const object = await c.env.PRESENTATION_MAKER_BUCKET.get(key);
-
-        if (!object) {
-            return c.json({ error: 'Video not found' }, 404);
+                // Try fetching the worker-provided URL over HTTP and proxy the response
+                try {
+                    const resp = await fetch(targetUrl);
+                    if (resp.ok && resp.body) {
+                        return new Response(resp.body, {
+                            headers: {
+                                'Content-Type': resp.headers.get('Content-Type') || 'video/mp4',
+                                'Content-Disposition': `attachment; filename="presentation_${jobId}.mp4"`,
+                                'Cache-Control': 'public, max-age=3600',
+                            },
+                        });
+                    }
+                    // If fetch returned 403/404, fall through to other fallbacks
+                } catch (fetchErr) {
+                    console.warn('Failed to fetch worker-provided URL, will try other fallbacks:', fetchErr);
+                }
+            }
+        } catch (doErr) {
+            console.warn('Failed to read job info from DO for download:', doErr);
         }
 
-        // ストリーミングレスポンスを返す
-        return new Response(object.body, {
-            headers: {
-                'Content-Type': 'video/mp4',
-                'Content-Disposition': `attachment; filename="presentation_${jobId}.mp4"`,
-                'Cache-Control': 'public, max-age=3600',
-            },
-        });
+        // Next: try R2 binding directly
+        try {
+            if (c.env && (c.env as any).PRESENTATION_MAKER_BUCKET) {
+                const object = await c.env.PRESENTATION_MAKER_BUCKET.get(key);
+
+                if (object) {
+                    return new Response(object.body, {
+                        headers: {
+                            'Content-Type': 'video/mp4',
+                            'Content-Disposition': `attachment; filename="presentation_${jobId}.mp4"`,
+                            'Cache-Control': 'public, max-age=3600',
+                        },
+                    });
+                }
+            }
+        } catch (e) {
+            console.warn('R2 get failed, will attempt other fallbacks:', e);
+        }
+
+        // Finally, as a last resort, try S3 fallback if configured (MinIO)
+        const r2Endpoint = (c.env as any)?.R2_ENDPOINT;
+        const r2AccessKey = (c.env as any)?.R2_ACCESS_KEY_ID;
+        const r2Secret = (c.env as any)?.R2_SECRET_ACCESS_KEY;
+        const r2Bucket = (c.env as any)?.R2_BUCKET_NAME || 'presentation-videos';
+
+        if (r2Endpoint && r2AccessKey && r2Secret) {
+            try {
+                const s3 = new S3Client({
+                    endpoint: r2Endpoint,
+                    region: 'us-east-1',
+                    credentials: { accessKeyId: r2AccessKey, secretAccessKey: r2Secret },
+                    forcePathStyle: true,
+                } as any);
+
+                const getCmd = new GetObjectCommand({ Bucket: r2Bucket, Key: key });
+                const resp = await s3.send(getCmd);
+
+                return new Response(resp.Body as any, {
+                    headers: {
+                        'Content-Type': 'video/mp4',
+                        'Content-Disposition': `attachment; filename="presentation_${jobId}.mp4"`,
+                        'Cache-Control': 'public, max-age=3600',
+                    },
+                });
+            } catch (s3err) {
+                console.error('S3 fallback error:', s3err);
+                return c.json({ error: 'Video not found' }, 404);
+            }
+        }
+
+        return c.json({ error: 'Video not found' }, 404);
     } catch (error) {
         console.error('Video download error:', error);
         return c.json({ error: 'Failed to download video' }, 500);
