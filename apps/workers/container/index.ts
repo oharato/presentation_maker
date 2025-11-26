@@ -23,19 +23,28 @@ export class VideoWorkerV2 implements DurableObject {
             if (this.state.container) {
                 console.log('Video Worker Container starting...');
                 // You can pass environment variables to the container here
-                await this.state.container.start({
-                    env: {
-                        CONTAINER_API_URL: env.CONTAINER_API_URL || 'https://presentation-maker.ohchans.com',
-                        R2_BUCKET_NAME: env.R2_BUCKET_NAME || 'presentation-videos',
-                        R2_ACCOUNT_ID: env.R2_ACCOUNT_ID || '',
-                        R2_ACCESS_KEY_ID: env.R2_ACCESS_KEY_ID || '',
-                        R2_SECRET_ACCESS_KEY: env.R2_SECRET_ACCESS_KEY || '',
-                        VOICEVOX_URL: env.VOICEVOX_URL || 'http://voicevox:50021',
-                    },
-                    defaultPort: 80,
-                    // sleepAfter: '10m', // 10分間アイドル状態が続いたらスリープ (This is not a direct container option, handle via DO logic)
-                });
-                console.log('Video Worker Container started.');
+                try {
+                    await this.state.container.start({
+                        env: {
+                            CONTAINER_API_URL: env.CONTAINER_API_URL || 'https://presentation-maker.ohchans.com',
+                            R2_BUCKET_NAME: env.R2_BUCKET_NAME || 'presentation-videos',
+                            R2_ACCOUNT_ID: env.R2_ACCOUNT_ID || '',
+                            R2_ACCESS_KEY_ID: env.R2_ACCESS_KEY_ID || '',
+                            R2_SECRET_ACCESS_KEY: env.R2_SECRET_ACCESS_KEY || '',
+                            VOICEVOX_URL: env.VOICEVOX_URL || 'http://voicevox:50021',
+                        },
+                        defaultPort: 80,
+                        // sleepAfter: '10m', // 10分間アイドル状態が続いたらスリープ (This is not a direct container option, handle via DO logic)
+                    });
+                    console.log('Video Worker Container started.');
+                } catch (e: any) {
+                    if (e.message && e.message.includes('already running')) {
+                        console.log('Video Worker Container is already running.');
+                    } else {
+                        console.error('Failed to start container:', e);
+                        throw e;
+                    }
+                }
             }
         });
     }
