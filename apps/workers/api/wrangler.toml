@@ -51,7 +51,8 @@ class_name = "JobManager"
 
 # 本番環境
 [env.production]
-name = "presentaion-maker"
+# Worker name used in Cloudflare (fix typo)
+name = "presentation-maker"
 vars = { ENVIRONMENT = "production" }
 [[env.production.routes]]
 pattern = "presentation-maker.ohchans.com/api/*"
@@ -61,6 +62,12 @@ pattern = "presentation-maker.ohchans.com/socket.io/*"
 zone_name = "ohchans.com"
 [[env.production.routes]]
 pattern = "presentation-maker.ohchans.com/ws*"
+zone_name = "ohchans.com"
+[[env.production.routes]]
+pattern = "presentation-maker.ohchans.com/ws/*"
+zone_name = "ohchans.com"
+[[env.production.routes]]
+pattern = "presentation-maker.ohchans.com/ws/connect/*"
 zone_name = "ohchans.com"
 [[env.production.r2_buckets]]
 binding = "PRESENTATION_MAKER_BUCKET"
