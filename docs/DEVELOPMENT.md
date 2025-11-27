@@ -484,7 +484,16 @@ constructor(state: any, env: any) {
 2. `index.ts` のコンストラクタで `envVars` に設定しているか
 3. 再デプロイしたか
 
-#### TypeScriptパスエイリアスエラー
+### `ContainerManager` の `405 Method Not Allowed` エラー
+
+**症状**:
+`npx wrangler tail` のログで `Container start response: 405 Method Not Allowed` が出力され、コンテナが起動しない。
+
+**原因**:
+`apps/workers/utils/container-manager.ts` 内の `startContainer` メソッドが、`CONTAINER_API_URL` で設定されたURL（通常はメインAPIのURL）に対して `POST` リクエストを送信していました。しかし、`video-worker` はこの `POST` リクエストに対応するエンドポイントを持っておらず、またメインAPIも `action: 'start'` のペイロードを持つルートハンドラを持っていませんでした。`video-worker` はジョブキューをポーリングするため、明示的な「起動」API呼び出しは不要でした。
+
+**対処法**:
+`apps/workers/utils/container-manager.ts` から、`startContainer` メソッド内の外部APIへの `fetch` 呼び出しを削除しました。これにより、`ContainerManager` はプラットフォーム（Cloudflare Containers）または `video-worker` 自身のポーリングメカニズムにコンテナのライフサイクル管理を依存するようになります。
 
 **症状**: `MODULE_NOT_FOUND: @src/...`
 

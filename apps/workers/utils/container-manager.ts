@@ -41,27 +41,10 @@ export class ContainerManager {
         try {
             console.log('Starting container...');
 
-            const response = await fetch(resolvedContainerApiUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${containerApiToken || ''}`,
-                },
-                body: JSON.stringify({
-                    action: 'start',
-                    timestamp: Date.now(),
-                }),
-            });
-
-            // Log status and body for easier debugging (405 / 4xx responses)
-            const respText = await response.text().catch(() => '<no-body>');
-            console.log(`Container start response: ${response.status} ${response.statusText} - ${respText}`);
-
-            if (!response.ok) {
-                throw new Error(`Container start failed: ${response.status} ${response.statusText}`);
-            }
-
-            console.log('Container start request sent successfully');
+            // If an external container API URL is provided, and we are not in development with a fallback,
+            // we assume the platform handles container startup and no explicit API call is needed here.
+            // The worker itself polls for jobs.
+            console.log('Container start request intended, relying on platform or worker polling.');
         } catch (error) {
             console.error('Failed to start container:', error);
             // エラーを投げてもジョブ登録自体は成功させるべきなので、ログ出力のみ
