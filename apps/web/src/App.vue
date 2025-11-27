@@ -205,18 +205,19 @@ interface JobProgress {
 }
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-// WebSocket URLの構築: API_URLのプロトコルとホストをベースにする
+// WebSocket URLの構築: 環境変数 `VITE_WS_URL` を優先し、未設定時は API のホストに対して
+// `/api/ws/connect/global` を使う（本番で Worker が `/api/*` に割り当てられている想定）
 const getWsUrl = () => {
-    if (import.meta.env.VITE_WS_URL) return import.meta.env.VITE_WS_URL;
-    
-    // API_URLから自動判定
-    try {
-        const url = new URL(API_URL);
-        const protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-        return `${protocol}//${url.host}/ws/connect/global`;
-    } catch (e) {
-        return 'ws://localhost:8787/ws/connect/global';
-    }
+  if (import.meta.env.VITE_WS_URL) return import.meta.env.VITE_WS_URL;
+
+  // API_URLから自動判定し、APIプレフィックスを付与する
+  try {
+    const url = new URL(API_URL);
+    const protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${protocol}//${url.host}/api/ws/connect/global`;
+  } catch (e) {
+    return 'ws://localhost:8787/ws/connect/global';
+  }
 };
 
 const STORAGE_KEY = 'presentation_maker_slides';
