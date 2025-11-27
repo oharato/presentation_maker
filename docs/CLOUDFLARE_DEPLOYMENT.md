@@ -35,7 +35,7 @@ dir = "web/dist"
 - `POST /api/generate` - 動画生成ジョブ作成
 - `GET /api/jobs/:id` - ジョブステータス取得
 - `GET /api/videos/:id` - 動画URL取得 (R2署名付きURL)
-- `WS /ws` - WebSocket接続 (Durable Objects経由)
+-- `WS /api/ws` - WebSocket接続 (Durable Objects経由)
 
 **デプロイ方法**:
 ```bash
@@ -389,7 +389,7 @@ UPSTASH_REDIS_REST_TOKEN = "your-token"
 ```bash
 # Pages環境変数 (Cloudflare Dashboard)
 VITE_API_URL=https://api.your-domain.com
-VITE_WS_URL=wss://api.your-domain.com/ws
+VITE_WS_URL=wss://api.your-domain.com/api/ws/connect/global
 ```
 
 ---

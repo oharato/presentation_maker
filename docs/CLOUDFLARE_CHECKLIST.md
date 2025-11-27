@@ -237,7 +237,7 @@ pnpm deploy:pages:staging
 curl https://api-staging.your-domain.com/health
 
 # WebSocket接続テスト
-wscat -c wss://api-staging.your-domain.com/ws?jobId=test
+wscat -c wss://api-staging.your-domain.com/api/ws/connect/global
 ```
 
 ## 📊 モニタリング設定

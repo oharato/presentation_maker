@@ -216,7 +216,7 @@ const getWsUrl = () => {
     const protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
     return `${protocol}//${url.host}/api/ws/connect/global`;
   } catch (e) {
-    return 'ws://localhost:8787/ws/connect/global';
+    return 'ws://localhost:8787/api/ws/connect/global';
   }
 };
 

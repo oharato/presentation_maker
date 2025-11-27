@@ -48,7 +48,7 @@ Cloudflare Dashboard https://dash.cloudflare.com/ で設定:
 2. Settings → Environment variables
 3. 以下を追加:
    - `VITE_API_URL`: `/api` (同一ドメインなので相対パスでOK)
-   - `VITE_WS_URL`: `wss://presentation-maker.your-domain.com/api/ws` (WebSocketはフルURL推奨)
+  - `VITE_WS_URL`: `wss://presentation-maker.your-domain.com/api/ws` (WebSocketはフルURL推奨)
 
 ## カスタムドメインとルーティング設定
 
@@ -111,7 +111,7 @@ curl https://api.your-domain.com/health
 ### WebSocket接続テスト
 
 ```javascript
-const ws = new WebSocket('wss://api.your-domain.com/ws?jobId=test');
+const ws = new WebSocket('wss://presentation-maker.your-domain.com/api/ws/connect/global');
 
 ws.onopen = () => {
   console.log('Connected');

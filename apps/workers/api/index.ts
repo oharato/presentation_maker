@@ -60,7 +60,9 @@ app.get('/', (c) => {
 app.route('/api', apiRoutes);
 
 // WebSocket ルート
-app.route('/ws', wsRoutes);
+// Mount WebSocket routes under the API prefix so all API-related paths
+// are served from `/api/*` (consistent with Pages routing rules).
+app.route('/api/ws', wsRoutes);
 
 // 404 ハンドラー
 app.notFound((c) => {

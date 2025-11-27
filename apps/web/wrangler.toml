@@ -7,13 +7,13 @@ pages_build_output_dir = "dist"
 # 環境変数 (プレビュー/ステージング)
 [env.preview.vars]
 VITE_API_URL = "https://presentation-maker-api-staging.ohchans.com"
-VITE_WS_URL = "wss://presentation-maker-api-staging.ohchans.com/ws"
+VITE_WS_URL = "wss://presentation-maker-api-staging.ohchans.com/api/ws/connect/global"
 VITE_MODEL_BASE_URL = "https://models.ohchans.com"
 
 # 環境変数 (本番)
 [env.production.vars]
 VITE_API_URL = "https://presentation-maker.ohchans.com"
-VITE_WS_URL = "wss://presentation-maker.ohchans.com/ws"
+VITE_WS_URL = "wss://presentation-maker.ohchans.com/api/ws/connect/global"
 VITE_MODEL_BASE_URL = "https://models.ohchans.com"
 
 # 注意: ローカル開発用の環境変数は .dev.vars ファイルを使用するか、

@@ -46,6 +46,22 @@ server.listen(PORT_NUM, LISTEN_HOST, () => {
     }
 });
 
+// Server-level error handling to surface listen/binding errors to logs
+server.on('error', (err) => {
+    console.error('HTTP server error:', err && err.message ? err.message : err);
+});
+
+// Global process-level handlers to capture uncaught errors/rejections in logs
+process.on('uncaughtException', (err) => {
+    console.error('Uncaught exception:', err && err.stack ? err.stack : err);
+    // Give logs a moment to flush
+    setTimeout(() => process.exit(1), 100);
+});
+
+process.on('unhandledRejection', (reason) => {
+    console.error('Unhandled rejection:', reason);
+});
+
 // 環境変数
 const API_URL = process.env.CONTAINER_API_URL || 'http://host.docker.internal:8787';
 const API_TOKEN = process.env.CONTAINER_API_TOKEN || 'dev-token';
