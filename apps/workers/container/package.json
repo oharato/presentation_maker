@@ -5,7 +5,8 @@
   "scripts": {
     "build": "tsc && node build.js",
     "start": "node dist/video-worker.js",
-    "deploy": "pnpm run build && wrangler deploy -e production --no-bundle"
+    "deploy": "pnpm run build && wrangler deploy -e production --no-bundle",
+    "logs": "wrangler tail --env production"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.939.0",
