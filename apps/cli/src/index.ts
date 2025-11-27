@@ -131,16 +131,20 @@ async function generateVideoForSlide(
 
     // Check for existing silent video file
     const existingSilentVideo = await findExistingSilentVideo(baseOutputName);
+    let actualSilentVideoPath: string;
+    
     if (existingSilentVideo) {
         console.log(`Using existing silent video for ${id}: ${existingSilentVideo}`);
+        actualSilentVideoPath = existingSilentVideo;
     } else {
         console.log(`Generating silent video for ${id} (Duration: ${duration}s)...`);
         await videoGenerator.createSilentVideo(actualImagePath, duration, silentVideoPath);
+        actualSilentVideoPath = silentVideoPath;
     }
 
     if (audioExists) {
         console.log(`Merging video and audio for ${id}...`);
-        await videoGenerator.mergeAudioVideo(silentVideoPath, audioPath, finalVideoPath);
+        await videoGenerator.mergeAudioVideo(actualSilentVideoPath, audioPath, finalVideoPath);
         return finalVideoPath;
     } else {
         console.log(`Skipping merge for ${id}: No audio generated.`);
