@@ -87,7 +87,8 @@ api.post('/upload-folder', async (c) => {
  */
 api.post('/generate', async (c) => {
     try {
-        const { slides } = await c.req.json();
+        const body = await c.req.json();
+        const { slides } = body as any;
 
         if (!slides || !Array.isArray(slides)) {
             return c.json({ error: 'Invalid slides data' }, 400);
@@ -95,9 +96,12 @@ api.post('/generate', async (c) => {
 
         const jobId = uuidv4();
 
+        // Accept optional voice selection and include in job data
+        const voicevoxSpeaker = (body as any).voicevoxSpeaker || 1;
+
         // ジョブキューに追加
         const queue = new JobQueue(c.env);
-        await queue.addJob(jobId, { slides });
+        await queue.addJob(jobId, { slides, voicevoxSpeaker });
 
         // コンテナを起動 (オンデマンド)
         const containerManager = new ContainerManager(c.env);

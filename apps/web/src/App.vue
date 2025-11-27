@@ -45,6 +45,19 @@
           </label>
         </div>
 
+        <!-- Voicevox Speaker Selection -->
+        <div class="mt-4">
+          <label class="block text-sm font-semibold text-gray-700 mb-2">VOICEVOX の声</label>
+          <select v-model="voicevoxSpeaker" class="px-4 py-2 border rounded-lg">
+            <option :value="1">1 — default</option>
+            <option :value="2">2 — voice 2</option>
+            <option :value="3">3 — voice 3</option>
+            <option :value="4">4 — voice 4</option>
+            <option :value="10">10 — voice 10</option>
+          </select>
+          <p class="mt-2 text-sm text-gray-500">開発環境では Voicevox の speaker ID を選択してください。</p>
+        </div>
+
         <!-- Sherpa-onnx Controls -->
         <div v-if="audioEngine === 'sherpa-onnx'" class="bg-purple-50 border border-purple-200 rounded-lg p-4">
           <div class="flex items-center gap-4">
@@ -214,6 +227,8 @@ const currentJob = ref<JobProgress | null>(null);
 const videoUrl = ref<string | null>(null);
 
 const audioEngine = ref<AudioEngine>('voicevox');
+// Selected VOICEVOX speaker id (number)
+const voicevoxSpeaker = ref<number>(1);
 const browserVideoGenerator = new BrowserVideoGenerator();
 
 const isSherpaLoading = ref(false);
@@ -525,7 +540,7 @@ async function generateVideo() {
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ slides: slides.value }),
+      body: JSON.stringify({ slides: slides.value, voicevoxSpeaker: voicevoxSpeaker.value }),
     });
     
     const data = await response.json();

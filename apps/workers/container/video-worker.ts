@@ -202,7 +202,7 @@ async function main() {
             try {
                 console.log('Received job:', JSON.stringify(job, null, 2));
 
-                const jobData = job as { jobId: string; data: { slides: any[] } };
+                const jobData = job as { jobId: string; data: { slides: any[]; voicevoxSpeaker?: number } };
                 jobId = jobData.jobId;
                 const slides = jobData.data?.slides;
 
@@ -222,7 +222,10 @@ async function main() {
 
                 const videoGenerator = new VideoGenerator();
                 const slideRenderer = new SlideRenderer();
-                const voicevoxService = new VoicevoxService(VOICEVOX_URL);
+
+                // Allow job to specify a Voicevox speaker id
+                const jobVoiceSpeaker = jobData.data?.voicevoxSpeaker ?? 1;
+                const voicevoxService = new VoicevoxService(VOICEVOX_URL, jobVoiceSpeaker);
 
                 const finalVideoPaths: string[] = [];
 

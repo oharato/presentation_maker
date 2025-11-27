@@ -11,6 +11,8 @@ export class SlideRenderer {
       <html>
       <head>
         <style>
+          @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap');
+          /* Use a Japanese-capable font for markdown rendering */
           body {
             width: 1920px;
             height: 1080px;
@@ -18,7 +20,7 @@ export class SlideRenderer {
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Noto Sans JP', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background-color: #f0f0f0;
             color: #333;
             margin: 0;
