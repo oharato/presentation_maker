@@ -30,19 +30,35 @@ const server = http.createServer((req, res) => {
     res.end('Video Worker is running');
 });
 
-// Explicitly bind to 0.0.0.0 so orchestrators that target container IPs can reach the server
+// Listen on the given port. Avoid forcing a host to increase likelihood the
+// process binds to all available interfaces (IPv4/IPv6 differences between
+// platforms can cause EADDRNOTAVAIL when binding to a specific IP).
 const LISTEN_HOST = process.env.LISTEN_HOST || '0.0.0.0';
 const PORT_NUM = Number(PORT) || 80;
-server.listen(PORT_NUM, LISTEN_HOST, () => {
-    console.log(`Server listening on ${LISTEN_HOST}:${PORT}`);
 
-    // Print network interfaces to help debugging which IPs are assigned inside the container
+// Prefer listening without an explicit host so the OS chooses the best
+// interface mapping (this binds to all addresses). Keep LISTEN_HOST for
+// informational logging and backward-compatibility via env override.
+server.listen(PORT_NUM, () => {
+    // Attempt to read the address information after bind
     try {
-        const { networkInterfaces } = require('os');
-        const ifaces = networkInterfaces();
-        console.log('Network interfaces:', JSON.stringify(ifaces, null, 2));
+        const addr = server.address();
+        if (addr && typeof addr === 'object') {
+            console.log(`Server listening on ${addr.address}:${(addr as any).port}`);
+        } else {
+            console.log(`Server listening on port ${PORT_NUM} (host: ${LISTEN_HOST})`);
+        }
+
+        // Print network interfaces to help debugging which IPs are assigned inside the container
+        try {
+            const { networkInterfaces } = require('os');
+            const ifaces = networkInterfaces();
+            console.log('Network interfaces:', JSON.stringify(ifaces, null, 2));
+        } catch (e) {
+            console.warn('Failed to list network interfaces', e);
+        }
     } catch (e) {
-        console.warn('Failed to list network interfaces', e);
+        console.warn('Failed to report server address after listen', e);
     }
 });
 
