@@ -23,9 +23,32 @@ interface SlideGroup {
 
 type SlideGroups = Map<string, SlideGroup>;
 
+// Supported image extensions for pre-prepared slides
+const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg'];
+
 async function findInputFiles(): Promise<string[]> {
     // Search in the absolute path of input directory
     return await glob(path.join(INPUT_DIR, '*'));
+}
+
+async function findExistingImage(baseOutputName: string): Promise<string | null> {
+    // Check for existing image files (png, jpg, jpeg)
+    for (const ext of IMAGE_EXTENSIONS) {
+        const imagePath = path.join(OUTPUT_DIR, `${baseOutputName}${ext}`);
+        if (await fs.pathExists(imagePath)) {
+            return imagePath;
+        }
+    }
+    return null;
+}
+
+async function findExistingSilentVideo(baseOutputName: string): Promise<string | null> {
+    // Check for existing silent video file
+    const silentVideoPath = path.join(OUTPUT_DIR, `${baseOutputName}.nosound.mp4`);
+    if (await fs.pathExists(silentVideoPath)) {
+        return silentVideoPath;
+    }
+    return null;
 }
 
 function groupFilesBySlideId(files: string[]): SlideGroups {
@@ -88,19 +111,32 @@ async function generateVideoForSlide(
     finalVideoPath: string,
     audioPath: string,
     duration: number,
-    audioExists: boolean
+    audioExists: boolean,
+    baseOutputName: string
 ): Promise<string | null> {
-    if (!group.md) {
-        console.log(`Skipping video for ${id}: No markdown file.`);
+    // Check for existing image file (png, jpg, jpeg)
+    let actualImagePath = await findExistingImage(baseOutputName);
+    
+    if (actualImagePath) {
+        console.log(`Using existing image for ${id}: ${actualImagePath}`);
+    } else if (group.md) {
+        console.log(`Rendering slide for ${id}...`);
+        const markdown = await fs.readFile(group.md, 'utf-8');
+        await slideRenderer.renderSlide(markdown, imagePath);
+        actualImagePath = imagePath;
+    } else {
+        console.log(`Skipping video for ${id}: No markdown file and no existing image.`);
         return null;
     }
 
-    console.log(`Rendering slide for ${id}...`);
-    const markdown = await fs.readFile(group.md, 'utf-8');
-    await slideRenderer.renderSlide(markdown, imagePath);
-
-    console.log(`Generating silent video for ${id} (Duration: ${duration}s)...`);
-    await videoGenerator.createSilentVideo(imagePath, duration, silentVideoPath);
+    // Check for existing silent video file
+    const existingSilentVideo = await findExistingSilentVideo(baseOutputName);
+    if (existingSilentVideo) {
+        console.log(`Using existing silent video for ${id}: ${existingSilentVideo}`);
+    } else {
+        console.log(`Generating silent video for ${id} (Duration: ${duration}s)...`);
+        await videoGenerator.createSilentVideo(actualImagePath, duration, silentVideoPath);
+    }
 
     if (audioExists) {
         console.log(`Merging video and audio for ${id}...`);
@@ -146,7 +182,8 @@ async function processSlide(
             finalVideoPath,
             audioPath,
             duration,
-            audioExists
+            audioExists,
+            baseOutputName
         );
     } catch (err) {
         console.error(`Failed to process ${id}:`, err);
