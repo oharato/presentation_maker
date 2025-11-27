@@ -53,6 +53,10 @@ export class ContainerManager {
                 }),
             });
 
+            // Log status and body for easier debugging (405 / 4xx responses)
+            const respText = await response.text().catch(() => '<no-body>');
+            console.log(`Container start response: ${response.status} ${response.statusText} - ${respText}`);
+
             if (!response.ok) {
                 throw new Error(`Container start failed: ${response.status} ${response.statusText}`);
             }
