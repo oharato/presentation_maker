@@ -59,6 +59,9 @@ zone_name = "ohchans.com"
 [[env.production.routes]]
 pattern = "presentation-maker.ohchans.com/socket.io/*"
 zone_name = "ohchans.com"
+[[env.production.routes]]
+pattern = "presentation-maker.ohchans.com/ws*"
+zone_name = "ohchans.com"
 [[env.production.r2_buckets]]
 binding = "PRESENTATION_MAKER_BUCKET"
 bucket_name = "presentation-videos"

@@ -18,13 +18,32 @@ import http from 'http';
 
 // HTTPサーバー起動 (Cloudflare Containers用)
 const PORT = process.env.PORT || 80;
-const server = http.createServer((_req, res) => {
-    res.writeHead(200);
+const server = http.createServer((req, res) => {
+    // Respond to keepalive probes and any basic request
+    if (req.url && req.url.includes('keepalive')) {
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end('ok');
+        return;
+    }
+
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('Video Worker is running');
 });
 
-server.listen(PORT, () => {
-    console.log(`Server listening on port ${PORT}`);
+// Explicitly bind to 0.0.0.0 so orchestrators that target container IPs can reach the server
+const LISTEN_HOST = process.env.LISTEN_HOST || '0.0.0.0';
+const PORT_NUM = Number(PORT) || 80;
+server.listen(PORT_NUM, LISTEN_HOST, () => {
+    console.log(`Server listening on ${LISTEN_HOST}:${PORT}`);
+
+    // Print network interfaces to help debugging which IPs are assigned inside the container
+    try {
+        const { networkInterfaces } = require('os');
+        const ifaces = networkInterfaces();
+        console.log('Network interfaces:', JSON.stringify(ifaces, null, 2));
+    } catch (e) {
+        console.warn('Failed to list network interfaces', e);
+    }
 });
 
 // 環境変数

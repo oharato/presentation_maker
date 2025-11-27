@@ -34,7 +34,7 @@
             "containers": [
                 {
                     "name": "video-worker",
-                    "image": "registry.cloudflare.com/1a02a58c61ffef10bc9598f738805e54/presentation-maker-worker:20251126091148",
+                    "image": "registry.cloudflare.com/1a02a58c61ffef10bc9598f738805e54/presentation-maker-worker:20251127091509",
                     "class_name": "VideoWorkerV2",
                     "instance_type": "standard-1"
                 }

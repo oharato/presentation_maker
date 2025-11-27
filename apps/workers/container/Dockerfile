@@ -11,11 +11,16 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     ca-certificates \
     fonts-liberation \
+    fonts-noto-cjk \
+    fontconfig \
     lsb-release \
     wget \
     xdg-utils \
     dos2unix \
     && rm -rf /var/lib/apt/lists/*
+    
+# Rebuild font cache so headless Chrome / Puppeteer can use newly installed fonts
+RUN fc-cache -f -v || true
 
 # Node.js 24のインストール
 RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
