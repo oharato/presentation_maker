@@ -4,7 +4,8 @@
   "main": "index.ts",
   "scripts": {
     "dev": "wrangler dev --env development --ip 0.0.0.0 --port 8787",
-    "deploy": "wrangler deploy -e production"
+    "deploy": "wrangler deploy -e production",
+    "logs": "wrangler tail --env production"
   },
   "dependencies": {
     "hono": "^4.10.6",
