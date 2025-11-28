@@ -10,8 +10,9 @@ const path_1 = __importDefault(require("path"));
 dotenv_1.default.config({ path: path_1.default.join(process.cwd(), '.env') });
 exports.config = {
     voicevox: {
-        // DockerコンテナのVOICEVOXに向け先を設定 (デフォルト: http://127.0.0.1:50021)
-        baseUrl: process.env.VOICEVOX_BASE_URL || 'http://127.0.0.1:50021',
+        // DockerコンテナのVOICEVOXに向け先を設定.
+        // docker-compose.local.yml では `VOICEVOX_URL` を使っているため、こちらを優先して読みます。
+        baseUrl: process.env.VOICEVOX_URL || process.env.VOICEVOX_BASE_URL || 'http://127.0.0.1:50021',
         speakerId: parseInt(process.env.VOICEVOX_SPEAKER_ID || '1', 10),
     },
 };

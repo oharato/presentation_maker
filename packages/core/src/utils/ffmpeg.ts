@@ -21,12 +21,16 @@ export const FFPROBE_PATH = process.env.FFPROBE_PATH || ffprobeInstaller.path;
  */
 export async function runFFmpeg(args: string[]): Promise<void> {
     return new Promise((resolve, reject) => {
+        console.log(`Running FFmpeg: ${FFMPEG_PATH} ${args.map(a => a.includes(' ') ? `"${a}"` : a).join(' ')}`);
         const process = spawn(FFMPEG_PATH, args);
 
         let stderr = '';
 
         process.stderr.on('data', (data) => {
-            stderr += data.toString();
+            const text = data.toString();
+            stderr += text;
+            // Stream stderr to console so runtime logs show ffmpeg progress/errors immediately
+            console.error(text);
         });
 
         process.on('close', (code) => {
@@ -106,7 +110,32 @@ export async function concatMedia(
     fs.writeFileSync(listFile, fileList);
 
     try {
+        // Add flags to regenerate PTS and avoid negative timestamps so concatenated files
+        // align media streams correctly across segments.
+        // If the caller specifically requests encoding, skip the copy path and run the
+        // re-encode command directly to normalize timestamps and codecs.
+        const reencodeArgs = [
+            '-fflags', '+genpts',
+            '-avoid_negative_ts', 'make_zero',
+            '-f', 'concat',
+            '-safe', '0',
+            '-i', listFile,
+            '-c:v', 'libx264',
+            '-preset', 'veryfast',
+            '-c:a', 'aac',
+            '-b:a', '128k',
+            '-y',
+            outputPath
+        ];
+
+        if (codec === 'encode') {
+            await runFFmpeg(reencodeArgs);
+            return;
+        }
+
         const args = [
+            '-fflags', '+genpts',
+            '-avoid_negative_ts', 'make_zero',
             '-f', 'concat',
             '-safe', '0',
             '-i', listFile,
@@ -115,12 +144,40 @@ export async function concatMedia(
             outputPath
         ];
 
-        await runFFmpeg(args);
+        try {
+            await runFFmpeg(args);
+        } catch (err) {
+            // If copy-based concat fails, try re-encoding as a fallback
+            console.warn(`concatMedia: copy-based concat failed, retrying with re-encode. Error: ${err}`);
+            await runFFmpeg(reencodeArgs);
+            return;
+        }
+
+        // After a successful concat, verify audio stream exists. If not, re-encode as a protective fallback.
+        const hasAudio = await hasAudioStream(outputPath).catch(() => false);
+        if (!hasAudio) {
+            console.warn('concatMedia: output has no audio stream after concat; retrying with re-encode.');
+            await runFFmpeg(reencodeArgs);
+        }
     } finally {
         // クリーンアップ
         if (fs.existsSync(listFile)) {
             fs.unlinkSync(listFile);
         }
+    }
+}
+
+/**
+ * Check whether a media file contains an audio stream using ffprobe.
+ */
+export async function hasAudioStream(filePath: string): Promise<boolean> {
+    try {
+        const { stdout } = await execAsync(
+            `"${FFPROBE_PATH}" -v error -select_streams a -show_entries stream=index -of default=noprint_wrappers=1:nokey=1 "${filePath}"`
+        );
+        return stdout.trim().length > 0;
+    } catch (err) {
+        return false;
     }
 }
 
@@ -161,15 +218,81 @@ export async function mergeAudioVideo(
     audioPath: string,
     outputPath: string
 ): Promise<void> {
-    const args = [
-        '-i', videoPath,
-        '-i', audioPath,
-        '-c:v', 'copy',
-        '-c:a', 'aac',
-        '-shortest',
-        '-y',
-        outputPath
-    ];
+    // Ensure final duration equals the longer of video/audio.
+    // Get durations first.
+    let videoDur = -1;
+    let audioDur = -1;
+    try {
+        videoDur = await getMediaDuration(videoPath);
+    } catch (e) {
+        console.warn('mergeAudioVideo: could not read video duration', e);
+    }
+    try {
+        audioDur = await getMediaDuration(audioPath);
+    } catch (e) {
+        console.warn('mergeAudioVideo: could not read audio duration', e);
+    }
 
-    await runFFmpeg(args);
+    const preferDur = Math.max(videoDur > 0 ? videoDur : 0, audioDur > 0 ? audioDur : 0);
+
+    // If audio is shorter, we'll pad audio with silence using apad and then trim/pad to preferDur.
+    // If video is shorter, we'll extend video last frame using tpad.
+
+    // Try a copy-based workflow first where possible (less CPU): copy video stream, encode audio to aac,
+    // but add filters as necessary to match durations.
+    const copyArgs: string[] = ['-i', videoPath, '-i', audioPath, '-map', '0:v:0', '-map', '1:a:0'];
+
+    // If video is shorter and we know preferDur, add tpad filter to extend video. This requires re-encoding video.
+    const needVideoExtend = videoDur > 0 && audioDur > videoDur;
+    const needAudioPad = audioDur > 0 && videoDur > audioDur;
+
+    if (needVideoExtend) {
+        // Re-encode video to extend last frame by (audioDur - videoDur)
+        const padSec = (audioDur - videoDur).toFixed(3);
+        copyArgs.push('-vf', `tpad=stop_duration=${padSec}`);
+        copyArgs.push('-c:v', 'libx264');
+    } else {
+        copyArgs.push('-c:v', 'copy');
+    }
+
+    // If audio is shorter, use apad filter to pad audio, then we'll set output duration explicitly to preferDur
+    if (needAudioPad) {
+        // Use apad without pad_dur (older ffmpeg builds may not support pad_dur). We'll
+        // set output duration via -t to prefer the longer side.
+        copyArgs.push('-af', 'apad');
+        copyArgs.push('-c:a', 'aac');
+    } else {
+        copyArgs.push('-c:a', 'aac');
+    }
+
+    // If preferDur is known, set it as output duration to ensure longer side is kept
+    if (preferDur > 0) {
+        copyArgs.push('-t', preferDur.toString());
+    }
+
+    copyArgs.push('-y', outputPath);
+
+    try {
+        await runFFmpeg(copyArgs);
+        return;
+    } catch (err) {
+        console.warn(`mergeAudioVideo: copy-based merge failed, will retry with re-encode. Error: ${err}`);
+    }
+
+    // Last resort: re-encode both streams with explicit mapping and duration control
+    const reencodeArgs: string[] = ['-i', videoPath, '-i', audioPath, '-map', '0:v:0', '-map', '1:a:0'];
+    if (videoDur > 0 && audioDur > videoDur) {
+        const padSec = (audioDur - videoDur).toFixed(3);
+        reencodeArgs.push('-vf', `tpad=stop_duration=${padSec}`);
+    }
+    if (audioDur > 0 && videoDur > audioDur) {
+        // Use apad without pad_dur and rely on -t to trim to final duration.
+        reencodeArgs.push('-af', 'apad');
+    }
+    const finalDur = preferDur > 0 ? preferDur.toString() : undefined;
+    reencodeArgs.push('-c:v', 'libx264', '-preset', 'veryfast', '-c:a', 'aac');
+    if (finalDur) reencodeArgs.push('-t', finalDur);
+    reencodeArgs.push('-y', outputPath);
+
+    await runFFmpeg(reencodeArgs);
 }

@@ -43,7 +43,8 @@ export class VideoGenerator {
             return;
         }
 
-        await concatMedia(videoPaths, outputPath);
+        // Use re-encoding for concat to normalize timestamps and avoid audio/video offset issues.
+        await concatMedia(videoPaths, outputPath, { codec: 'encode' });
         console.log(`Final merged video generated: ${outputPath}`);
     }
 }

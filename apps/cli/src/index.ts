@@ -5,7 +5,9 @@ import {
     VoicevoxService,
     SlideRenderer,
     VideoGenerator,
-    config
+    config,
+    getMediaDuration,
+    hasAudioStream
 } from '@presentation-maker/core';
 
 // Assume running from apps/cli, project root is two levels up
@@ -33,10 +35,14 @@ async function findInputFiles(): Promise<string[]> {
 
 async function findExistingImage(baseOutputName: string): Promise<string | null> {
     // Check for existing image files (png, jpg, jpeg)
+    // Accept images where the number prefix matches, even if title differs.
+    // baseOutputName is like "011__title copy"; extract the id prefix.
+    const id = baseOutputName.split('__')[0];
     for (const ext of IMAGE_EXTENSIONS) {
-        const imagePath = path.join(OUTPUT_DIR, `${baseOutputName}${ext}`);
-        if (await fs.pathExists(imagePath)) {
-            return imagePath;
+        const pattern = path.join(INPUT_DIR, `${id}__*${ext}`);
+        const matches = await glob(pattern);
+        if (matches && matches.length > 0) {
+            return matches[0];
         }
     }
     return null;
@@ -44,9 +50,21 @@ async function findExistingImage(baseOutputName: string): Promise<string | null>
 
 async function findExistingSilentVideo(baseOutputName: string): Promise<string | null> {
     // Check for existing silent video file
-    const silentVideoPath = path.join(OUTPUT_DIR, `${baseOutputName}.nosound.mp4`);
-    if (await fs.pathExists(silentVideoPath)) {
-        return silentVideoPath;
+    // CLI supports placing pre-prepared silent videos or full mp4s in `input/`
+    const id = baseOutputName.split('__')[0];
+
+    // Prefer explicit .nosound.mp4 matching the id
+    const nosoundPattern = path.join(INPUT_DIR, `${id}__*.nosound.mp4`);
+    const nosoundMatches = await glob(nosoundPattern);
+    if (nosoundMatches && nosoundMatches.length > 0) {
+        return nosoundMatches[0];
+    }
+
+    // Accept any mp4 for this id (could contain audio)
+    const mp4Pattern = path.join(INPUT_DIR, `${id}__*.mp4`);
+    const mp4Matches = await glob(mp4Pattern);
+    if (mp4Matches && mp4Matches.length > 0) {
+        return mp4Matches[0];
     }
     return null;
 }
@@ -54,20 +72,33 @@ async function findExistingSilentVideo(baseOutputName: string): Promise<string |
 function groupFilesBySlideId(files: string[]): SlideGroups {
     const groups: SlideGroups = new Map();
 
+    // Accept not only .md/.txt but also preprepared assets placed in input/ (images, nosound videos)
+    // Supported patterns:
+    //  - 010__title.md
+    //  - 010__title.txt
+    //  - 010__title.png/jpg/jpeg
+    //  - 010__title.nosound.mp4
+    //  - 010__title.mp4  <-- accept plain mp4 placed in input/
+    const assetRegex = /^(\d+)__(.*?)(?:\.(md|txt|png|jpg|jpeg|mp4)|\.nosound\.mp4)$/i;
+
     for (const file of files) {
         const basename = path.basename(file);
-        const match = basename.match(FILE_PATTERN);
+        const match = basename.match(assetRegex);
 
         if (match) {
-            const [, id, title, ext] = match;
+            const [, id, title, ext] = match as unknown as [string, string, string, string];
 
             if (!groups.has(id)) {
                 groups.set(id, { title });
             }
 
             const group = groups.get(id)!;
-            if (ext === 'md') group.md = file;
-            if (ext === 'txt') group.txt = file;
+
+            // Mark md/txt if present so rendering logic can prefer markdown over images
+            const lower = basename.toLowerCase();
+            if (lower.endsWith('.md')) group.md = file;
+            if (lower.endsWith('.txt')) group.txt = file;
+            // Note: images and nosound files don't need separate fields; presence in input/ is enough
         }
     }
 
@@ -114,8 +145,43 @@ async function generateVideoForSlide(
     audioExists: boolean,
     baseOutputName: string
 ): Promise<string | null> {
+    // Shared variables for chosen assets. Declare once to avoid redeclarations.
+    let actualImagePath: string | null = null;
+    let actualSilentVideoPath: string | null = null;
+
+    // First, check if a pre-prepared silent/full video exists in input/ for this id.
+    const existingSilentVideo = await findExistingSilentVideo(baseOutputName);
+    if (existingSilentVideo) {
+        console.log(`Using existing silent/full video for ${id}: ${existingSilentVideo}`);
+
+        const lowerPath = existingSilentVideo.toLowerCase();
+        if (lowerPath.endsWith('.mp4')) {
+            // If the full mp4 already contains audio and we have no need to merge, copy it to final output
+            const containsAudio = await hasAudioStream(existingSilentVideo).catch(() => false);
+            if (containsAudio) {
+                console.log(`Existing input video contains audio; copying to final output for ${id}`);
+                await fs.copy(existingSilentVideo, finalVideoPath);
+                return finalVideoPath;
+            }
+
+            // Otherwise treat it as the silent video to be merged with generated audio
+            actualImagePath = null;
+            actualSilentVideoPath = existingSilentVideo;
+
+            if (audioExists) {
+                console.log(`Merging existing silent video and audio for ${id}...`);
+                await videoGenerator.mergeAudioVideo(actualSilentVideoPath, audioPath, finalVideoPath);
+                return finalVideoPath;
+            } else {
+                // No audio to merge; copy silent video as final output
+                await fs.copy(actualSilentVideoPath, finalVideoPath);
+                return finalVideoPath;
+            }
+        }
+    }
+
     // Check for existing image file (png, jpg, jpeg)
-    let actualImagePath = await findExistingImage(baseOutputName);
+    actualImagePath = await findExistingImage(baseOutputName);
     
     if (actualImagePath) {
         console.log(`Using existing image for ${id}: ${actualImagePath}`);
@@ -129,22 +195,63 @@ async function generateVideoForSlide(
         return null;
     }
 
-    // Check for existing silent video file
-    const existingSilentVideo = await findExistingSilentVideo(baseOutputName);
-    let actualSilentVideoPath: string;
-    
-    if (existingSilentVideo) {
-        console.log(`Using existing silent video for ${id}: ${existingSilentVideo}`);
-        actualSilentVideoPath = existingSilentVideo;
-    } else {
-        console.log(`Generating silent video for ${id} (Duration: ${duration}s)...`);
-        await videoGenerator.createSilentVideo(actualImagePath, duration, silentVideoPath);
-        actualSilentVideoPath = silentVideoPath;
+    // Check for existing silent video file (second pass) only if we didn't use a preprepared video above
+    if (!actualSilentVideoPath) {
+        const existingSilentVideo2 = await findExistingSilentVideo(baseOutputName);
+        if (existingSilentVideo2) {
+            console.log(`Using existing silent video for ${id}: ${existingSilentVideo2}`);
+            actualSilentVideoPath = existingSilentVideo2;
+
+            // If the existing video is a full .mp4 that already includes audio, use it as the final video
+            // (copy it to the output final path and skip merging)
+            try {
+                const lowerPath = actualSilentVideoPath.toLowerCase();
+                if (lowerPath.endsWith('.mp4')) {
+                    const hasAudio = await hasAudioStream(actualSilentVideoPath).catch(() => false);
+                    if (hasAudio) {
+                        console.log(`Existing input video contains audio; copying to final output for ${id}`);
+                        await fs.copy(actualSilentVideoPath, finalVideoPath);
+                        return finalVideoPath;
+                    }
+                }
+            } catch (e) {
+                console.warn('Could not inspect existing video audio streams:', e);
+            }
+        } else {
+            console.log(`Generating silent video for ${id} (Duration: ${duration}s)...`);
+            await videoGenerator.createSilentVideo(actualImagePath, duration, silentVideoPath);
+            actualSilentVideoPath = silentVideoPath;
+        }
     }
 
     if (audioExists) {
         console.log(`Merging video and audio for ${id}...`);
-        await videoGenerator.mergeAudioVideo(actualSilentVideoPath, audioPath, finalVideoPath);
+        try {
+            // Log sizes and durations before merge to help debugging
+            try {
+                const svStat = await fs.stat(actualSilentVideoPath);
+                const aStat = await fs.stat(audioPath);
+                const svDur = await getMediaDuration(actualSilentVideoPath).catch(() => -1);
+                const aDur = await getMediaDuration(audioPath).catch(() => -1);
+                console.log(`Before merge - silentVideo: size=${svStat.size} bytes, duration=${svDur}s; audio: size=${aStat.size} bytes, duration=${aDur}s`);
+            } catch (infoErr) {
+                console.warn('Could not stat/duration before merge:', infoErr);
+            }
+
+            await videoGenerator.mergeAudioVideo(actualSilentVideoPath, audioPath, finalVideoPath);
+
+            // Log sizes and durations after merge
+            try {
+                const outStat = await fs.stat(finalVideoPath);
+                const outDur = await getMediaDuration(finalVideoPath).catch(() => -1);
+                console.log(`After merge - output: size=${outStat.size} bytes, duration=${outDur}s`);
+            } catch (outErr) {
+                console.warn('Could not stat/duration after merge:', outErr);
+            }
+        } catch (mergeErr) {
+            console.error(`Error during merge for ${id}:`, mergeErr);
+            throw mergeErr;
+        }
         return finalVideoPath;
     } else {
         console.log(`Skipping merge for ${id}: No audio generated.`);
@@ -176,7 +283,7 @@ async function processSlide(
             audioPath
         );
 
-        return await generateVideoForSlide(
+        const finalVideo = await generateVideoForSlide(
             id,
             group,
             slideRenderer,
@@ -189,6 +296,31 @@ async function processSlide(
             audioExists,
             baseOutputName
         );
+
+        if (!finalVideo) return null;
+
+        // New requirement: create a processed file
+        // If there is a corresponding audio file in output/, merge it with the video to create
+        // `xxx.processed.mp4`. If no audio file exists, duplicate the video to create the processed file.
+        const processedPath = finalVideo.replace(/\.mp4$/i, '.processed.mp4');
+        const correspondingAudio = audioPath; // audio path already points to output/{base}.wav
+
+        try {
+            const hasCorrespondingAudio = await fs.pathExists(correspondingAudio);
+            if (hasCorrespondingAudio) {
+                console.log(`Found audio for ${id}; merging into processed file: ${processedPath}`);
+                await videoGenerator.mergeAudioVideo(finalVideo, correspondingAudio, processedPath);
+            } else {
+                console.log(`No audio for ${id}; copying video to processed file: ${processedPath}`);
+                await fs.copy(finalVideo, processedPath);
+            }
+        } catch (procErr) {
+            console.error(`Failed to create processed video for ${id}:`, procErr);
+            // As a fallback, ensure at least the original finalVideo is returned
+            return finalVideo;
+        }
+
+        return processedPath;
     } catch (err) {
         console.error(`Failed to process ${id}:`, err);
         return null;
@@ -208,7 +340,13 @@ async function concatenateVideos(
     const finalPresentationPath = path.join(OUTPUT_DIR, 'final_presentation.mp4');
 
     try {
-        await videoGenerator.concatVideos(videoPaths, finalPresentationPath);
+        // The CLI now produces `.processed.mp4` files for each slide; ensure we use those
+        const toConcat = videoPaths.map(p => {
+            if (p.toLowerCase().endsWith('.processed.mp4')) return p;
+            if (p.toLowerCase().endsWith('.mp4')) return p.replace(/\.mp4$/i, '.processed.mp4');
+            return p;
+        });
+        await videoGenerator.concatVideos(toConcat, finalPresentationPath);
         console.log('Final presentation created successfully!');
     } catch (err) {
         console.error('Failed to concatenate videos:', err);

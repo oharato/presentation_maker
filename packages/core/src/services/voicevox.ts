@@ -126,6 +126,13 @@ export class VoicevoxService {
 
     private async generateVoice(text: string, outputPath: string): Promise<void> {
         try {
+            // Log base URL and check connectivity to help debugging when running in CLI or containers
+            try {
+                const healthRes = await axios.get(this.baseUrl, { timeout: 2000 });
+                console.log(`VOICEVOX base URL reachable: ${this.baseUrl} (status: ${healthRes.status})`);
+            } catch (err: any) {
+                console.warn(`VOICEVOX base URL may be unreachable: ${this.baseUrl} (${err && err.message ? err.message : err})`);
+            }
             const queryData = await this.createAudioQuery(text);
             const audioData = await this.synthesizeAudio(queryData);
             await fs.outputFile(outputPath, audioData);

@@ -6,13 +6,14 @@ export class SlideRenderer {
     const htmlContent = await marked.parse(markdown);
 
     // Basic styling for the slide
+    // Prefer locally-installed Japanese-capable fonts (avoid relying on Google Fonts network)
     const fullHtml = `
       <!DOCTYPE html>
       <html>
       <head>
         <style>
-          @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap');
-          /* Use a Japanese-capable font for markdown rendering */
+          /* Prefer local Noto Sans CJK (installed in container) and fall back to common sans-serif fonts.
+             Avoid network-dependent @import so rendering works offline inside containers. */
           body {
             width: 1920px;
             height: 1080px;
@@ -20,7 +21,7 @@ export class SlideRenderer {
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            font-family: 'Noto Sans JP', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Noto Sans CJK JP', 'Noto Sans JP', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background-color: #f0f0f0;
             color: #333;
             margin: 0;
@@ -54,10 +55,28 @@ export class SlideRenderer {
       args.push('--no-sandbox', '--disable-setuid-sandbox');
     }
 
-    const browser = await puppeteer.launch({
+    // Allow overriding the Chromium/Chrome executable via env var to support local dev setups
+    const launchOptions: any = {
       headless: true,
-      args
-    });
+      args,
+    };
+
+    if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+      launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    }
+
+    let browser;
+    try {
+      browser = await puppeteer.launch(launchOptions);
+    } catch (err) {
+      console.error('Failed to launch Chromium/Chrome for Puppeteer.');
+      console.error('Options tried:', launchOptions);
+      console.error('Possible fixes:');
+      console.error(' - Install browsers for Puppeteer: `npx puppeteer browsers install chrome`');
+      console.error(' - Or set `PUPPETEER_EXECUTABLE_PATH` env var to your Chrome/Chromium binary (e.g. /usr/bin/google-chrome-stable)');
+      console.error(' - Ensure puppeteer cache directory is writable (default: ~/.cache/puppeteer)');
+      throw err;
+    }
     const page = await browser.newPage();
     await page.setViewport({ width: 1920, height: 1080 });
     await page.setContent(fullHtml);
