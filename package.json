@@ -3,7 +3,9 @@
   "private": true,
   "scripts": {
     "build": "pnpm --filter \"./packages/*\" build && pnpm --filter \"./apps/*\" build",
-    "dev:cli": "pnpm --filter @presentation-maker/cli dev",
+    "cli": "pnpm --filter @presentation-maker/cli dev",
+    "cli:final": "pnpm --filter @presentation-maker/cli dev final",
+    "cli:thumbnails": "pnpm --filter @presentation-maker/cli run thumbnails-to-pdf",
     "dev:server": "pnpm --filter @presentation-maker/server dev",
     "dev:web": "pnpm --filter @presentation-maker/web dev",
     "dev:worker:api": "pnpm --filter @presentation-maker/worker-api dev",

@@ -206,13 +206,17 @@ export async function imageToVideo(
 ): Promise<void> {
     const { fps = 30, resolution = '1920x1080' } = options;
 
+    const [targetW, targetH] = resolution.split('x').map(s => parseInt(s, 10));
+    // scale to fit while preserving aspect ratio, then pad to target resolution and set SAR=1
+    const scalePadFilter = `scale='if(gt(a,${targetW}/${targetH}),${targetW},-2)':'if(gt(a,${targetW}/${targetH}),-2,${targetH})',pad=${targetW}:${targetH}:(ow-iw)/2:(oh-ih)/2,setsar=1`;
+
     const args = [
         '-loop', '1',
         '-i', imagePath,
         '-c:v', 'libx264',
         '-t', duration.toString(),
         '-pix_fmt', 'yuv420p',
-        '-vf', `scale=${resolution}`,
+        '-vf', scalePadFilter,
         '-r', fps.toString(),
         '-y',
         outputPath

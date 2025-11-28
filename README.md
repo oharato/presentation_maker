@@ -86,6 +86,52 @@ CLIモードでは、事前に用意された画像や無音動画ファイル�
 
 これにより、外部ツールで作成した高品質な画像やカスタム動画を利用できます。
 
+### CLI のメディアパイプラインと新機能
+
+CLI（`apps/cli`）でのローカルメディア生成フローに関する重要な仕様と、追加した便利な機能をまとめます。
+
+- **入力場所**: 事前準備素材はすべて `input/` に配置します。ファイル名は `NNN__title.*` の形式を想定します（例: `020__slide-title.md`, `021__cover.png`, `031__demo.mp4`）。
+- **スライド素材の自動利用**:
+	- 画像: `input/{id}__*.png|jpg|jpeg` がある場合は Markdown レンダリングをスキップしてその画像をスライドに使用します。
+	- 無音動画: `input/{id}__*.nosound.mp4` を置くとスライドごとの無音動画生成をスキップできます。
+	- フル mp4: `input/{id}__*.mp4` を置くと、音声の有無を検査してそのまま使うか（音声あり）、音声と合成するか（無音）を自動で判断します。
+- **出力ファイル**: 各スライドの最終動画は `output/{id}__title.mp4`、さらに音声と結合した「処理済みファイル」を `output/{id}__title.processed.mp4` として出力します。最終的な結合は `output/final_presentation.mp4` に書き出されます。
+- **音声と動画のマージ**:
+	- スライドごとに音声（VOICEVOX生成）と動画を結合する際、音声の先頭が負のPTSになるケースに対処するため、マージ処理で音声PTSをリセット（`asetpts=PTS-STARTPTS`）します。
+	- マージ時は「長い方の長さを優先」するロジックを取り入れています（audio/video をプローブして短い方を `apad`/`tpad` で延長し `-t` で長さを揃える）。
+	- まず可能なら高速なコピーパス（ストリームコピー）を試行し、問題があれば再エンコードして正常化します。
+- **最終結合（concat）**:
+	- デフォルトは高速な concat（copy ベース）を試み、失敗や音声の欠落があれば再エンコードでフォールバックします。
+	- 再エンコード concat は PTS 再生成フラグ（`-fflags +genpts -avoid_negative_ts make_zero`）を使い、必要に応じて全入力を同一解像度/コーデックに正規化します。
+	- 再エンコード時は規定解像度（デフォルト `1920x1080`）に「アスペクト比を維持してフィット（scale+pad）」するフィルタを適用します。
+
+- **画像からの動画化**: `imageToVideo`（スライド画像 → 無音動画）は、画像をアスペクト比を維持してターゲット解像度にフィット（中央パディング）する `scale+pad` フィルタを使用します。デフォルト解像度は `1920x1080` です。
+
+- **CLI 引数の便利機能**:
+	- `pnpm --filter @presentation-maker/cli dev` : すべて生成 → 結合（従来の動作）
+	- `pnpm --filter @presentation-maker/cli dev 020` : 指定のスライド ID（複数可）だけ処理して結合
+	- `pnpm --filter @presentation-maker/cli dev final` : 既に存在する `output/*.processed.mp4` を使って「最終結合のみ」を行う（再生成は行いません）
+
+- **サムネイル→PDF バッチ**: `apps/cli` に `thumbnails-to-pdf` スクリプトを追加しました。`output/*.processed.mp4` の先頭フレームを抽出して `output/presentation_thumbnails.pdf` にまとめます。
+
+### 使い方（例）
+
+```bash
+# すべての処理
+pnpm --filter @presentation-maker/cli dev
+
+# ID 020 のみ処理
+pnpm --filter @presentation-maker/cli dev 020
+
+# 既存の processed 動画だけ結合して final を作る
+pnpm --filter @presentation-maker/cli dev final
+
+# processed の先頭サムネイルを PDF にまとめる
+pnpm --filter @presentation-maker/cli run thumbnails-to-pdf
+```
+
+このセクションで説明した CLI とメディアパイプラインの実装は、`packages/core/src/utils/ffmpeg.ts`（および生成済みの `dist`）にあるユーティリティを使って行われています。音声PTSの正規化やアスペクト比維持、再エンコードフォールバックなどのロジックはそこで管理されています。
+
 ## ディレクトリ構造
 
 ```

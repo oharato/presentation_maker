@@ -368,9 +368,53 @@ async function main() {
     const groups = groupFilesBySlideId(files);
     const sortedIds = Array.from(groups.keys()).sort();
 
+    // Allow optional numeric slide id(s) to be passed as CLI args to process only those slides.
+    // Example: `pnpm --filter @presentation-maker/cli dev 010` will process only the slide with id '010'.
+    const cliArgs = process.argv.slice(2).map(a => a.trim()).filter(a => a.length > 0);
+    const requestedIds = cliArgs.filter(a => /^\d+$/.test(a));
+    let idsToProcess: string[] | undefined = undefined;
+    if (requestedIds.length > 0) {
+        // Keep only ids that actually exist in groups; warn on missing ones.
+        const available = new Set(sortedIds);
+        const missing = requestedIds.filter(r => !available.has(r));
+        if (missing.length > 0) {
+            console.warn(`Requested slide id(s) not found in input/: ${missing.join(', ')}`);
+        }
+        // Filter sortedIds to only requested & existing ids, preserving sort order
+        const requestedSet = new Set(requestedIds);
+        const filtered = sortedIds.filter(id => requestedSet.has(id));
+        if (filtered.length === 0) {
+            console.log('No requested slide IDs found; nothing to process.');
+            return;
+        }
+        // Use filtered ids for processing
+        idsToProcess = filtered;
+    }
+
+    // If user passed the special 'final' argument, only run the concatenation step
+    // using already-created `output/*.processed.mp4` files and exit.
+    const finalRequested = cliArgs.map(a => a.toLowerCase()).includes('final');
+    if (finalRequested) {
+        console.log('Final-only mode requested: concatenating existing processed videos...');
+        const procPattern = path.join(OUTPUT_DIR, '*.processed.mp4');
+        const processedFiles = await glob(procPattern);
+        if (!processedFiles || processedFiles.length === 0) {
+            console.log('No processed videos found in output/*.processed.mp4 to concatenate.');
+            return;
+        }
+
+        // Use the existing concatenate helper to build final_presentation.mp4
+        await concatenateVideos(processedFiles.sort(), videoGenerator);
+        console.log('Final-only concatenation completed.');
+        return;
+    }
+
     const generatedVideos: string[] = [];
 
-    for (const id of sortedIds) {
+    // Use idsToProcess when set (requested via CLI), otherwise process all sortedIds
+    const iterateIds: string[] = (typeof idsToProcess !== 'undefined') ? idsToProcess : sortedIds;
+
+    for (const id of iterateIds) {
         const group = groups.get(id)!;
         const videoPath = await processSlide(id, group, voicevox, slideRenderer, videoGenerator);
 
