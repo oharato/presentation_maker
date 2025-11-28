@@ -15,9 +15,18 @@ import fs from 'fs-extra';
 import path from 'path';
 import { Readable } from 'stream';
 import http from 'http';
+import os from 'os'; // Explicitly import os
 
 // HTTPサーバー起動 (Cloudflare Containers用)
 const PORT = process.env.PORT || 80;
+const LISTEN_HOST = process.env.LISTEN_HOST || '0.0.0.0';
+const PORT_NUM = Number(PORT) || 80;
+
+let lastActivityTime = Date.now();
+let processedJobs = 0;
+let currentJobId: string | null = null;
+let errors: string[] = [];
+
 const server = http.createServer((req, res) => {
     // Respond to keepalive probes and any basic request
     if (req.url && req.url.includes('keepalive')) {
@@ -26,27 +35,49 @@ const server = http.createServer((req, res) => {
         return;
     }
 
+    if (req.url && req.url.includes('debug')) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+            status: 'running',
+            uptime: process.uptime(),
+            lastActivityTime: new Date(lastActivityTime).toISOString(),
+            processedJobs,
+            currentJobId,
+            errors: errors.slice(-5), // last 5 errors
+            env: {
+                API_URL: process.env.CONTAINER_API_URL,
+                VOICEVOX_URL: process.env.VOICEVOX_URL
+            }
+        }));
+        return;
+    }
+
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('Video Worker is running');
 });
 
-// Listen on the given port. Avoid forcing a host to increase likelihood the
-// process binds to all available interfaces (IPv4/IPv6 differences between
-// platforms can cause EADDRNOTAVAIL when binding to a specific IP).
-const LISTEN_HOST = process.env.LISTEN_HOST || '0.0.0.0';
-const PORT_NUM = Number(PORT) || 80;
+// Add detailed startup logging
+console.log(`[VideoWorker Startup] Process ID: ${process.pid}`);
+console.log(`[VideoWorker Startup] Node.js Version: ${process.version}`);
+console.log(`[VideoWorker Startup] OS Type: ${os.type()}`);
+console.log(`[VideoWorker Startup] OS Platform: ${os.platform()}`);
+console.log(`[VideoWorker Startup] Environment Variables:`);
+console.log(`  PORT=${process.env.PORT} (Resolved to ${PORT})`);
+console.log(`  LISTEN_HOST=${process.env.LISTEN_HOST} (Resolved to ${LISTEN_HOST})`);
+console.log(`  CONTAINER_API_URL=${process.env.CONTAINER_API_URL}`);
+console.log(`  VOICEVOX_URL=${process.env.VOICEVOX_URL}`);
+console.log(`  R2_ACCOUNT_ID=${process.env.R2_ACCOUNT_ID}`);
+console.log(`  R2_ENDPOINT=${process.env.R2_ENDPOINT}`);
 
-// Prefer listening without an explicit host so the OS chooses the best
-// interface mapping (this binds to all addresses). Keep LISTEN_HOST for
-// informational logging and backward-compatibility via env override.
+// Explicitly bind to LISTEN_HOST (default 0.0.0.0) to ensure we are accessible
 server.listen(PORT_NUM, () => {
     // Attempt to read the address information after bind
     try {
         const addr = server.address();
         if (addr && typeof addr === 'object') {
-            console.log(`Server listening on ${addr.address}:${(addr as any).port}`);
+            console.log(`[VideoWorker Startup] Server successfully listening on ${addr.address}:${(addr as any).port}`);
         } else {
-            console.log(`Server listening on port ${PORT_NUM} (host: ${LISTEN_HOST})`);
+            console.log(`[VideoWorker Startup] Server successfully listening on port ${PORT_NUM} (host: ${LISTEN_HOST})`);
         }
 
         // Print network interfaces to help debugging which IPs are assigned inside the container
@@ -155,12 +186,14 @@ async function getJob() {
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
+            console.log(`Attempting to get job from API: ${API_URL}/api/internal/queue/next`);
             const response = await fetch(`${API_URL}/api/internal/queue/next`, {
                 headers: {
                     'Authorization': `Bearer ${API_TOKEN}`,
                     'User-Agent': 'VideoWorker/1.0',
                 },
             });
+            console.log(`Response from getJob: ${response.status} ${response.statusText}`);
 
             if (response.status === 204) {
                 return null;
@@ -201,6 +234,7 @@ async function getJob() {
  */
 async function updateJobStatus(jobId: string, status: string, data?: any) {
     try {
+        console.log(`Updating job status for ${jobId} to ${status}. Data: ${JSON.stringify(data)}`);
         await fetch(`${API_URL}/api/internal/jobs/${jobId}/status`, {
             method: 'POST',
             headers: {
@@ -218,11 +252,45 @@ async function updateJobStatus(jobId: string, status: string, data?: any) {
     }
 }
 
+/**
+ * Voicevoxの起動待機
+ */
+async function waitForVoicevox() {
+    console.log(`Waiting for Voicevox at ${VOICEVOX_URL}...`);
+    const start = Date.now();
+    let attempt = 0;
+    while (true) {
+        attempt++;
+        console.log(`Attempting to connect to Voicevox (attempt ${attempt})...`);
+        try {
+            const res = await fetch(`${VOICEVOX_URL}/version`);
+            if (res.ok) {
+                console.log('Voicevox is ready.');
+                break;
+            } else {
+                console.log(`Voicevox responded with status ${res.status}. Retrying...`);
+            }
+        } catch (e: any) {
+            console.log(`Voicevox connection failed: ${e.message || e}. Retrying...`);
+        }
+        
+        if (Date.now() - start > 60000) {
+             console.warn('Voicevox startup is taking longer than 60s...');
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+}
+
 async function main() {
-    console.log('Video Worker started');
+    console.log('Video Worker started v1.2');
     console.log(`API URL: ${API_URL}`);
 
-    let lastActivityTime = Date.now();
+    // Update global lastActivityTime
+    lastActivityTime = Date.now();
+
+    // Ensure Voicevox is ready before starting job loop
+    await waitForVoicevox();
 
     while (true) {
         try {
@@ -245,6 +313,7 @@ async function main() {
 
             // アクティビティ時間を更新
             lastActivityTime = Date.now();
+            processedJobs++;
 
             let jobId: string | undefined;
             let tempDir: string | undefined;
@@ -255,6 +324,8 @@ async function main() {
 
                 const jobData = job as { jobId: string; data: { slides: any[]; voicevoxSpeaker?: number } };
                 jobId = jobData.jobId;
+                currentJobId = jobId;
+                
                 const slides = jobData.data?.slides;
 
                 if (!slides || !Array.isArray(slides)) {
@@ -394,10 +465,12 @@ async function main() {
 
             } catch (error: any) { // Catch for specific job failure
                 console.error(`Job failed: ${jobId || 'unknown'}`, error);
+                errors.push(`Job ${jobId}: ${error.message}`);
                 await updateJobStatus(jobId || 'unknown-job', 'failed', {
                     message: error.message || 'Unknown error',
                 });
             } finally {
+                currentJobId = null;
                 // 9. Clean up temporary files
                 if (tempDir) {
                     await fs.remove(tempDir).catch(e => console.error("Error cleaning temp dir:", e));
@@ -407,8 +480,9 @@ async function main() {
                 }
             }
 
-        } catch (error) { // Outer catch for worker loop errors (e.g., getJob failing)
+        } catch (error: any) { // Outer catch for worker loop errors (e.g., getJob failing)
             console.error('Worker loop error:', error);
+            errors.push(`Loop error: ${error.message}`);
             await new Promise(resolve => setTimeout(resolve, 5000));
         }
     }

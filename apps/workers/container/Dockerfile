@@ -78,4 +78,5 @@ EXPOSE 80
 # Node.jsのヒープサイズ制限を緩和
 ENV NODE_OPTIONS="--max-old-space-size=2048"
 
-ENTRYPOINT ["/entrypoint.sh"]
+# Directly run the Node.js worker for debugging. Voicevox will not be started with this configuration.
+CMD ["node", "dist/video-worker.js"]

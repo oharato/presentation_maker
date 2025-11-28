@@ -72,6 +72,18 @@ export default {
         // Cronトリガーで定期的にコンテナを起動/維持する
         const id = env.VIDEO_WORKER.idFromName("worker-instance");
         const stub = env.VIDEO_WORKER.get(id);
-        await stub.fetch("http://internal/keepalive"); // This request will be handled by the Durable Object's fetch method
+        
+        try {
+            // Try to get debug info
+            const res = await stub.fetch("http://internal/debug");
+            if (res.ok) {
+                const text = await res.text();
+                console.log("Container Status:", text);
+            } else {
+                console.log("Container Keepalive status:", res.status);
+            }
+        } catch (e) {
+            console.error("Failed to probe container:", e);
+        }
     }
 };

@@ -14,50 +14,7 @@ echo "VOICEVOX started!"
 # Video Workerを起動（メインプロセス）
 echo "Starting Video Worker..."
 
-# Start the worker in the background so we can perform a readiness probe
-node dist/video-worker.js &
-WORKER_PID=$!
+# Start the worker in the foreground to capture its output directly
+exec node dist/video-worker.js
 
-# Wait for the worker to respond on the keepalive endpoint before continuing.
-# Try several addresses used by different platforms: local loopback and the
-# Cloudflare internal host. This increases the chance the readiness probe
-# succeeds regardless of the container IP mapping.
-echo "Waiting for Video Worker to become ready (keepalive)..."
-MAX_WAIT=60
-COUNT=0
-READY=false
-while [ "$COUNT" -lt "$MAX_WAIT" ]; do
-	COUNT=$((COUNT+1))
-
-	# Try loopback
-	if curl -sSf http://127.0.0.1:80/keepalive >/dev/null 2>&1; then
-		READY=true
-		break
-	fi
-
-	# Try localhost (some runtimes map differently)
-	if curl -sSf http://localhost:80/keepalive >/dev/null 2>&1; then
-		READY=true
-		break
-	fi
-
-	# Try Cloudflare internal host (used by the platform probe)
-	if curl -sSf http://internal/keepalive >/dev/null 2>&1; then
-		READY=true
-		break
-	fi
-
-	sleep 1
-done
-
-if [ "$READY" = true ]; then
-	echo "Video Worker is ready (keepalive responded)."
-else
-	echo "Timeout waiting for Video Worker keepalive after ${MAX_WAIT}s"
-	sleep 1
-	kill -TERM "$WORKER_PID" >/dev/null 2>&1 || true
-	exit 1
-fi
-
-# Wait on the worker process so the container keeps running and logs are forwarded
-wait "$WORKER_PID"
+# If exec succeeds, script execution stops here. If it fails, script continues and exits.
