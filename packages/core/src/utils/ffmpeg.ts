@@ -94,6 +94,8 @@ export async function concatMedia(
     options: {
         codec?: 'copy' | 'encode';
         tmpDir?: string;
+        // target resolution in WxH format (e.g. '1920x1080') used when re-encoding
+        resolution?: string;
     } = {}
 ): Promise<void> {
     if (files.length === 0) {
@@ -114,6 +116,14 @@ export async function concatMedia(
         // align media streams correctly across segments.
         // If the caller specifically requests encoding, skip the copy path and run the
         // re-encode command directly to normalize timestamps and codecs.
+        const { resolution = '1920x1080' } = options;
+
+        // Prepare a video filter to scale while preserving aspect ratio and pad to target
+        // resolution. This centers the scaled video within the target box.
+        const [targetW, targetH] = resolution.split('x').map(s => parseInt(s, 10));
+        // Use conditional scaling to fit while preserving aspect ratio, then pad and set SAR=1
+        const scalePadFilter = `scale='if(gt(a,${targetW}/${targetH}),${targetW},-2)':'if(gt(a,${targetW}/${targetH}),-2,${targetH})',pad=${targetW}:${targetH}:(ow-iw)/2:(oh-ih)/2,setsar=1`;
+
         const reencodeArgs = [
             '-fflags', '+genpts',
             '-avoid_negative_ts', 'make_zero',
@@ -122,6 +132,7 @@ export async function concatMedia(
             '-i', listFile,
             '-c:v', 'libx264',
             '-preset', 'veryfast',
+            '-vf', scalePadFilter,
             '-c:a', 'aac',
             '-b:a', '128k',
             '-y',
@@ -239,8 +250,9 @@ export async function mergeAudioVideo(
     // If video is shorter, we'll extend video last frame using tpad.
 
     // Try a copy-based workflow first where possible (less CPU): copy video stream, encode audio to aac,
-    // but add filters as necessary to match durations.
-    const copyArgs: string[] = ['-i', videoPath, '-i', audioPath, '-map', '0:v:0', '-map', '1:a:0'];
+    // but add filters as necessary to match durations. Add flags to regenerate PTS and avoid
+    // negative timestamps on output so segments start at 0.
+    const copyArgs: string[] = ['-fflags', '+genpts', '-avoid_negative_ts', 'make_zero', '-i', videoPath, '-i', audioPath, '-map', '0:v:0', '-map', '1:a:0'];
 
     // If video is shorter and we know preferDur, add tpad filter to extend video. This requires re-encoding video.
     const needVideoExtend = videoDur > 0 && audioDur > videoDur;
@@ -257,11 +269,13 @@ export async function mergeAudioVideo(
 
     // If audio is shorter, use apad filter to pad audio, then we'll set output duration explicitly to preferDur
     if (needAudioPad) {
-        // Use apad without pad_dur (older ffmpeg builds may not support pad_dur). We'll
-        // set output duration via -t to prefer the longer side.
-        copyArgs.push('-af', 'apad');
+        // Reset audio PTS to start at 0 and pad audio when needed. Use apad without pad_dur
+        // for compatibility; duration is controlled with -t.
+        copyArgs.push('-af', 'asetpts=PTS-STARTPTS,apad');
         copyArgs.push('-c:a', 'aac');
     } else {
+        // Ensure audio timestamps start at 0 even when not padding
+        copyArgs.push('-af', 'asetpts=PTS-STARTPTS');
         copyArgs.push('-c:a', 'aac');
     }
 
@@ -272,27 +286,50 @@ export async function mergeAudioVideo(
 
     copyArgs.push('-y', outputPath);
 
-    try {
-        await runFFmpeg(copyArgs);
-        return;
-    } catch (err) {
-        console.warn(`mergeAudioVideo: copy-based merge failed, will retry with re-encode. Error: ${err}`);
-    }
-
-    // Last resort: re-encode both streams with explicit mapping and duration control
-    const reencodeArgs: string[] = ['-i', videoPath, '-i', audioPath, '-map', '0:v:0', '-map', '1:a:0'];
+    // Prepare re-encode args ahead of time so we can invoke them if we detect
+    // negative audio PTS after the copy path or if the copy path fails.
+    const reencodeArgs: string[] = ['-fflags', '+genpts', '-avoid_negative_ts', 'make_zero', '-i', videoPath, '-i', audioPath, '-map', '0:v:0', '-map', '1:a:0'];
     if (videoDur > 0 && audioDur > videoDur) {
         const padSec = (audioDur - videoDur).toFixed(3);
         reencodeArgs.push('-vf', `tpad=stop_duration=${padSec}`);
     }
     if (audioDur > 0 && videoDur > audioDur) {
-        // Use apad without pad_dur and rely on -t to trim to final duration.
-        reencodeArgs.push('-af', 'apad');
+        reencodeArgs.push('-af', 'asetpts=PTS-STARTPTS,apad');
+    } else {
+        reencodeArgs.push('-af', 'asetpts=PTS-STARTPTS');
     }
     const finalDur = preferDur > 0 ? preferDur.toString() : undefined;
     reencodeArgs.push('-c:v', 'libx264', '-preset', 'veryfast', '-c:a', 'aac');
     if (finalDur) reencodeArgs.push('-t', finalDur);
     reencodeArgs.push('-y', outputPath);
 
+    try {
+        await runFFmpeg(copyArgs);
+
+        // After a successful copy-based merge, check whether the audio stream contains
+        // negative start timestamps. Some inputs produce negative audio PTS which can
+        // cause misalignment after concatenation. If we detect negative PTS, re-encode
+        // the file with filters to normalize timestamps.
+        try {
+            const { stdout } = await execAsync(
+                `"${FFPROBE_PATH}" -v error -select_streams a -show_entries packet=pts_time -of default=noprint_wrappers=1:nokey=1 "${outputPath}"`
+            );
+            const firstLine = (stdout || '').split('\n').find(l => l.trim().length > 0);
+            const firstPts = firstLine ? parseFloat(firstLine.trim()) : NaN;
+            if (!isNaN(firstPts) && firstPts < -0.0001) {
+                console.warn('mergeAudioVideo: detected negative audio PTS in output; re-encoding to normalize timestamps.');
+                await runFFmpeg(reencodeArgs);
+            } else {
+                return;
+            }
+        } catch (e) {
+            // If ffprobe check fails for any reason, don't block - keep the copy output.
+            return;
+        }
+    } catch (err) {
+        console.warn(`mergeAudioVideo: copy-based merge failed, will retry with re-encode. Error: ${err}`);
+    }
+
+    // Re-encode path (prepared earlier) — run it now as the fallback.
     await runFFmpeg(reencodeArgs);
 }
