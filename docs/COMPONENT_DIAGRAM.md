@@ -116,28 +116,64 @@ project_root/
 
 ---
 
-## 2. Cloudflareモードのコンポーネント構成
-
-主要なコンポーネント間のメッセージングとデータフローの詳細です。
-
 ```mermaid
 graph TD
-    subgraph "API Gateway (Worker)"
-        API_Handler["Request Handler"]
+    subgraph "Web App (Browser)"
+        Web_UI["Vue.js UI (App.vue)"]
+        Browser_SlideRenderer["BrowserSlideRenderer"]
+        HTML_To_Image["html-to-image"]
+        Marked_Browser["Marked (Browser)"]
     end
 
-    subgraph "JobManager (Durable Object)"
-        DO_Queue["Job Queue (Array)"]
-        DO_State["Job State (Map)"]
-        DO_Alarm["Alarm Handler"]
+    Web_UI --> Browser_SlideRenderer
+    Browser_SlideRenderer --> Marked_Browser
+    Browser_SlideRenderer --> HTML_To_Image
+
+    subgraph "Server-Side (Cloudflare Workers)"
+        API_Gateway["API Gateway (api.ts)"]
+        JobManager["JobManager (Durable Object)"]
+        VideoWorker["Video Worker (Container)"]
+        R2_Storage["R2 Storage"]
     end
 
-    subgraph "Video Worker (Container)"
-        VW_Poller["Job Poller"]
-        VW_Processor["Job Processor"]
-        VW_Uploader["Result Uploader"]
-    end
-    style R2_Output fill:#f3e5f5
+    Web_UI -- API Calls / WebSockets --> API_Gateway
+    API_Gateway -- Manages --> JobManager
+    JobManager -- Queues Jobs --> VideoWorker
+    VideoWorker -- Reads/Writes --> R2_Storage
+
+    style Web_UI fill:#e0f2f7
+    style Browser_SlideRenderer fill:#e0f7fa
+    style HTML_To_Image fill:#e0f7fa
+    style Marked_Browser fill:#e0f7fa
+    style API_Gateway fill:#fff3e0
+    style JobManager fill:#fff3e0
+    style VideoWorker fill:#ffe0b2
+    style R2_Storage fill:#ffecb3
+```
+
+### Webアプリモード処理フロー (ライブプレビュー含む)
+
+```mermaid
+sequenceDiagram
+    participant User as ユーザー
+    participant UI as Web UI (App.vue)
+    participant BSR as BrowserSlideRenderer
+    participant Marked as Marked (Browser)
+    participant H2I as html-to-image
+
+    User->>UI: Markdown入力
+    UI->>BSR: render(markdown)
+    BSR->>Marked: parse(markdown)
+    Marked-->>BSR: HTMLコンテンツ
+    BSR->>H2I: toPng(containerElement)
+    H2I-->>BSR: PNG Blob
+    BSR-->>UI: Blob URL
+    UI->>User: ライブプレビュー表示
+
+    User->>UI: 動画生成ボタンクリック
+    UI->>UI: (ブラウザ側TTS/FFmpeg.wasm または サーバーAPI)
+    UI->>User: 動画生成進捗表示
+    UI->>User: 完成動画表示
 ```
 
 ## 3. 動画生成詳細シーケンス (Container Internal)

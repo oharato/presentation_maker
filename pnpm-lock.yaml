@@ -112,6 +112,9 @@ importers:
       html-to-image:
         specifier: ^1.11.13
         version: 1.11.13
+      marked:
+        specifier: ^17.0.1
+        version: 17.0.1
       sherpa-onnx:
         specifier: ^1.12.17
         version: 1.12.17

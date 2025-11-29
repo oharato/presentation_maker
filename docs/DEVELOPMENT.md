@@ -158,6 +158,8 @@ pnpm test -- --coverage
   - TypeScript
   - Vite (ビルドツール)
   - Socket.IO Client
+  - **Markdown処理**: marked (ライブプレビュー用)
+  - **スライドレンダリング**: html-to-image (ライブプレビュー用)
 
 - **インフラ**:
   - Redis (ジョブキュー・データストア)

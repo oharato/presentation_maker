@@ -118,10 +118,14 @@
                 <label class="block text-sm font-semibold text-gray-700 mb-2">スライド内容（Markdown）</label>
                 <textarea
                   v-model="slide.markdown"
+                  @input="renderSlidePreview(slide)" <!-- Add this line -->
                   placeholder="# タイトル&#10;&#10;- ポイント1&#10;- ポイント2"
                   rows="10"
                   class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
                 ></textarea>
+                <div v-if="slide.previewUrl" class="mt-4 border border-gray-200 rounded-lg overflow-hidden">
+                  <img :src="slide.previewUrl" alt="Slide Preview" class="w-full h-auto object-cover">
+                </div>
               </div>
               
               <div>
@@ -190,12 +194,13 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch } from 'vue';
 import { sherpaService, transformersService, type AudioEngine } from './services/audio';
-import { BrowserVideoGenerator } from './services/video';
+import { BrowserVideoGenerator, SlideRenderer as BrowserSlideRenderer } from './services/video';
 
 interface Slide {
   id: string;
   markdown: string;
   script: string;
+  previewUrl?: string; // Add this line
 }
 
 interface JobProgress {
@@ -205,6 +210,7 @@ interface JobProgress {
 }
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const browserSlideRenderer = new BrowserSlideRenderer();
 // WebSocket URLの構築: 環境変数 `VITE_WS_URL` を優先し、未設定時は API のホストに対して
 // `/api/ws/connect/global` を使う（本番で Worker が `/api/*` に割り当てられている想定）
 const getWsUrl = () => {
@@ -374,6 +380,8 @@ onMounted(() => {
   if (saved) {
       try {
           slides.value = JSON.parse(saved);
+          // Render previews for loaded slides
+          slides.value.forEach(slide => renderSlidePreview(slide));
       } catch (e) {
           console.error('Failed to load slides from storage', e);
           addSlide();
@@ -443,20 +451,55 @@ const loadTransformers = async () => {
     }
 };
 
+async function renderSlidePreview(slide: Slide) {
+  if (!slide.markdown) {
+    if (slide.previewUrl) {
+      URL.revokeObjectURL(slide.previewUrl);
+      slide.previewUrl = undefined;
+    }
+    return;
+  }
+  try {
+    const blob = await browserSlideRenderer.render(slide.markdown);
+    if (slide.previewUrl) {
+      URL.revokeObjectURL(slide.previewUrl);
+    }
+    slide.previewUrl = URL.createObjectURL(blob);
+  } catch (error) {
+    console.error('Failed to render slide preview:', error);
+    if (slide.previewUrl) {
+      URL.revokeObjectURL(slide.previewUrl);
+      slide.previewUrl = undefined;
+    }
+  }
+}
+
 function addSlide() {
-  slides.value.push({
+  const newSlide: Slide = {
     id: Date.now().toString(),
     markdown: '',
     script: '',
-  });
+    previewUrl: undefined,
+  };
+  slides.value.push(newSlide);
+  renderSlidePreview(newSlide); // Render initial empty slide preview
 }
 
 function removeSlide(index: number) {
+  const slideToRemove = slides.value[index];
+  if (slideToRemove?.previewUrl) {
+    URL.revokeObjectURL(slideToRemove.previewUrl);
+  }
   slides.value.splice(index, 1);
 }
 
 function clearSlides() {
     if (confirm('入力内容をすべてクリアしますか？')) {
+        slides.value.forEach(slide => {
+            if (slide.previewUrl) {
+                URL.revokeObjectURL(slide.previewUrl);
+            }
+        });
         slides.value = [];
         localStorage.removeItem(STORAGE_KEY);
         currentJob.value = null;

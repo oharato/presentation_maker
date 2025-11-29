@@ -12,7 +12,8 @@ Cloudflareのエコシステム（Workers, Durable Objects, R2）をフル活用
 
 ## 技術スタック
 
-### フロントエンド
+### フロントエンド (Web App)
+- **ライブプレビュー**: Markdown入力時にブラウザ上でスライドのリアルタイムプレビューを生成・表示します。これにより、最終的な動画のイメージを素早く確認できます。
 - **Framework**: Vue.js 3
 - **Build Tool**: Vite
 - **Hosting**: Cloudflare Pages
