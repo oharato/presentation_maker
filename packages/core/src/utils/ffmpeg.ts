@@ -103,6 +103,9 @@ export async function concatMedia(
     }
 
     const { codec = 'copy', tmpDir = require('os').tmpdir() } = options;
+    // We'll allow overriding the codec choice if we detect incompatible stream parameters
+    // across input files (e.g. differing audio sample rates or channel counts).
+    let effectiveCodec: 'copy' | 'encode' = codec;
     const fs = require('fs');
     const path = require('path');
 
@@ -112,6 +115,39 @@ export async function concatMedia(
     fs.writeFileSync(listFile, fileList);
 
     try {
+        // Detect mismatched audio stream parameters (sample_rate, channels).
+        // If any file differs, force re-encoding for concat to avoid silent/garbled segments.
+        try {
+            const audioProps: Array<{ sample_rate: string; channels: string }> = [];
+            for (const f of files) {
+                const probeOut = await execAsync(
+                    `"${FFPROBE_PATH}" -v error -select_streams a:0 -show_entries stream=sample_rate,channels -of default=noprint_wrappers=1:nokey=1 "${f}"`
+                );
+                const lines = (probeOut.stdout || '').trim().split(/\r?\n/).map(l => l.trim());
+                if (lines.length >= 2) {
+                    audioProps.push({ sample_rate: lines[0], channels: lines[1] });
+                } else if (lines.length === 1 && lines[0] !== '') {
+                    // Some files might report only sample_rate or only channels; treat as mismatch
+                    audioProps.push({ sample_rate: lines[0], channels: '' });
+                } else {
+                    // No audio stream in this file; that's a mismatch we should handle by re-encoding
+                    audioProps.push({ sample_rate: '', channels: '' });
+                }
+            }
+
+            if (audioProps.length > 0) {
+                const first = audioProps[0];
+                const mismatch = audioProps.some(p => p.sample_rate !== first.sample_rate || p.channels !== first.channels);
+                if (mismatch) {
+                    console.warn('concatMedia: detected mismatched audio stream parameters across inputs — forcing re-encode concat');
+                    effectiveCodec = 'encode';
+                }
+            }
+        } catch (probeErr) {
+            // If probing fails for any reason, fall back to the conservative re-encode path
+            console.warn('concatMedia: ffprobe failed while checking stream parameters, will force re-encode as a fallback', probeErr);
+            effectiveCodec = 'encode';
+        }
         // Add flags to regenerate PTS and avoid negative timestamps so concatenated files
         // align media streams correctly across segments.
         // If the caller specifically requests encoding, skip the copy path and run the
@@ -124,22 +160,50 @@ export async function concatMedia(
         // Use conditional scaling to fit while preserving aspect ratio, then pad and set SAR=1
         const scalePadFilter = `scale='if(gt(a,${targetW}/${targetH}),${targetW},-2)':'if(gt(a,${targetW}/${targetH}),-2,${targetH})',pad=${targetW}:${targetH}:(ow-iw)/2:(oh-ih)/2,setsar=1`;
 
+        // Use the concat filter when re-encoding to avoid timestamp/format mismatch problems
+        // across inputs. Build a filter_complex that concatenates all input streams and
+        // then scales/pads the resulting video.
+        const inputArgs: string[] = [];
+        const inputCount = files.length;
+        for (const f of files) {
+            inputArgs.push('-i', f);
+        }
+
+        // Build per-input scale/pad filters so every input video has identical size
+        // before concatenation. Example: [0:v:0]scale=...pad=...setsar=1[v0];[1:v:0]... [v1];...
+        const perInputFilters: string[] = [];
+        for (let i = 0; i < inputCount; i++) {
+            perInputFilters.push(`[${i}:v:0]${scalePadFilter}[v${i}]`);
+        }
+
+        // Build concat input order: [v0][0:a:0][v1][1:a:0]... so video and audio pairs match
+        const concatInputs = [] as string[];
+        for (let i = 0; i < inputCount; i++) {
+            concatInputs.push(`[v${i}][${i}:a:0]`);
+        }
+        const concatFilter = `${concatInputs.join('')}concat=n=${inputCount}:v=1:a=1[v][a]`;
+        const filterComplex = `${perInputFilters.join(';')}; ${concatFilter}; [v]` + scalePadFilter + `[vout]`;
+
         const reencodeArgs = [
-            '-fflags', '+genpts',
-            '-avoid_negative_ts', 'make_zero',
-            '-f', 'concat',
-            '-safe', '0',
-            '-i', listFile,
+            // inputs
+            ...inputArgs,
+            // filter graph
+            '-filter_complex', filterComplex,
+            '-map', '[vout]',
+            '-map', '[a]',
+            // encode
             '-c:v', 'libx264',
             '-preset', 'veryfast',
-            '-vf', scalePadFilter,
             '-c:a', 'aac',
             '-b:a', '128k',
+            // normalize audio sample rate / channels
+            '-ar', '24000',
+            '-ac', '1',
             '-y',
             outputPath
         ];
 
-        if (codec === 'encode') {
+        if (effectiveCodec === 'encode') {
             await runFFmpeg(reencodeArgs);
             return;
         }
@@ -150,7 +214,7 @@ export async function concatMedia(
             '-f', 'concat',
             '-safe', '0',
             '-i', listFile,
-            '-c', codec,
+            '-c', effectiveCodec,
             '-y',
             outputPath
         ];
