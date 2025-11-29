@@ -1,6 +1,5 @@
 <template>
   <div class="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
-    <!-- Header -->
     <header class="bg-white shadow-sm border-b border-gray-200">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <h1 class="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
@@ -12,7 +11,6 @@
 
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
       
-      <!-- Audio Engine Selection -->
       <section class="bg-white rounded-xl shadow-md p-6 border border-gray-200">
         <h2 class="text-2xl font-bold text-gray-800 mb-4">🎙️ 音声合成エンジン</h2>
         
@@ -45,7 +43,6 @@
           </label>
         </div>
 
-        <!-- Voicevox Speaker Selection -->
         <div class="mt-4">
           <label class="block text-sm font-semibold text-gray-700 mb-2">VOICEVOX の声</label>
           <select v-model="voicevoxSpeaker" class="px-4 py-2 border rounded-lg">
@@ -58,7 +55,6 @@
           <p class="mt-2 text-sm text-gray-500">開発環境では Voicevox の speaker ID を選択してください。</p>
         </div>
 
-        <!-- Sherpa-onnx Controls -->
         <div v-if="audioEngine === 'sherpa-onnx'" class="bg-purple-50 border border-purple-200 rounded-lg p-4">
           <div class="flex items-center gap-4">
             <button 
@@ -75,7 +71,6 @@
           <p class="mt-3 text-sm text-gray-600">※ 初回ロード時にモデルをダウンロードします（約50MB）</p>
         </div>
 
-        <!-- Transformers.js Controls -->
         <div v-if="audioEngine === 'transformers'" class="bg-blue-50 border border-blue-200 rounded-lg p-4">
           <div class="flex items-center gap-4">
             <button 
@@ -98,7 +93,6 @@
         </div>
       </section>
 
-      <!-- Slides Editor -->
       <section class="bg-white rounded-xl shadow-md p-6 border border-gray-200">
         <h2 class="text-2xl font-bold text-gray-800 mb-4">✏️ スライド編集</h2>
         
@@ -118,19 +112,12 @@
                 <label class="block text-sm font-semibold text-gray-700 mb-2">スライド内容（Markdown）</label>
                 <textarea
                   v-model="slide.markdown"
-                  @input="renderSlidePreview(slide, $refs[`slidePreviewContainer_${slide.id}`] as HTMLElement)"
+                  @input="renderSlidePreview(slide)"
                   placeholder="# タイトル&#10;&#10;- ポイント1&#10;- ポイント2"
                   rows="10"
                   class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
                 ></textarea>
-                <div v-if="slide.previewUrl" class="mt-4 border border-gray-200 rounded-lg overflow-hidden">
-                  <img :src="slide.previewUrl" alt="Slide Preview" class="w-full h-auto object-cover">
-                </div>
-                <!-- Hidden container for slide preview rendering -->
-                <div 
-                  :ref="`slidePreviewContainer_${slide.id}`"
-                  class="slide-preview-container-hidden"
-                ></div>
+
               </div>
               
               <div>
@@ -166,7 +153,6 @@
         </button>
       </section>
 
-      <!-- Progress Section -->
       <section v-if="currentJob" class="bg-white rounded-xl shadow-md p-6 border border-gray-200">
         <h2 class="text-2xl font-bold text-gray-800 mb-4">⏳ 生成進捗</h2>
         <div class="w-full bg-gray-200 rounded-full h-4 overflow-hidden">
@@ -176,7 +162,6 @@
         <p class="mt-3 text-gray-700 font-medium">{{ currentJob.message }} ({{ currentJob.progress }}%)</p>
       </section>
 
-      <!-- Video Player Section -->
       <section v-if="videoUrl" class="bg-white rounded-xl shadow-md p-6 border border-gray-200" ref="videoSection">
         <h2 class="text-2xl font-bold text-gray-800 mb-4">🎥 生成された動画</h2>
         <video :src="videoUrl" controls class="w-full max-w-4xl mx-auto rounded-lg shadow-lg"></video>
@@ -189,10 +174,10 @@
       </section>
     </main>
 
-    <!-- Footer -->
     <footer class="mt-12 py-6 text-center text-gray-600 text-sm">
       <p>プレゼンテーション動画メーカー - Powered by VOICEVOX, Sherpa-onnx, Transformers.js</p>
     </footer>
+    
   </div>
 </template>
 
@@ -456,8 +441,8 @@ const loadTransformers = async () => {
     }
 };
 
-async function renderSlidePreview(slide: Slide, targetElement: HTMLElement) {
-  if (!targetElement || !slide.markdown) {
+async function renderSlidePreview(slide: Slide) {
+  if (!slide.markdown) {
     if (slide.previewUrl) {
       URL.revokeObjectURL(slide.previewUrl);
       slide.previewUrl = undefined;
@@ -465,7 +450,7 @@ async function renderSlidePreview(slide: Slide, targetElement: HTMLElement) {
     return;
   }
   try {
-    const blob = await browserSlideRenderer.render(slide.markdown, targetElement);
+    const blob = await browserSlideRenderer.render(slide.markdown);
     if (slide.previewUrl) {
       URL.revokeObjectURL(slide.previewUrl);
     }
@@ -487,25 +472,133 @@ function addSlide() {
     previewUrl: undefined,
   };
   slides.value.push(newSlide);
+  renderSlidePreview(newSlide); // Render initial empty slide preview
 }
 
-onMounted(() => {
-  connectWebSocket();
-  
-  const saved = localStorage.getItem(STORAGE_KEY);
-  if (saved) {
-      try {
-          slides.value = JSON.parse(saved);
-          // Render previews for loaded slides after elements are mounted
-          // This will be handled by watch(slides) combined with the @input event
-      } catch (e) {
-          console.error('Failed to load slides from storage', e);
-          addSlide();
-      }
-  } else {
-      addSlide();
+function removeSlide(index: number) {
+  const slideToRemove = slides.value[index];
+  if (slideToRemove?.previewUrl) {
+    URL.revokeObjectURL(slideToRemove.previewUrl);
   }
+  slides.value.splice(index, 1);
+}
 
-  if (transformersService.isReady()) {
-      isTransformersReady.value = true;
+function clearSlides() {
+    if (confirm('入力内容をすべてクリアしますか？')) {
+        slides.value.forEach(slide => {
+            if (slide.previewUrl) {
+                URL.revokeObjectURL(slide.previewUrl);
+            }
+        });
+        slides.value = [];
+        localStorage.removeItem(STORAGE_KEY);
+        currentJob.value = null;
+        videoUrl.value = null;
+        addSlide();
+    }
+}
+
+async function generateVideo() {
+  if (slides.value.length === 0) return;
+  
+  isGenerating.value = true;
+  videoUrl.value = null;
+  
+  try {
+    if (audioEngine.value === 'transformers' || audioEngine.value === 'sherpa-onnx') {
+        const audioBlobs: Record<string, Blob> = {};
+        
+        if (audioEngine.value === 'sherpa-onnx') {
+            if (!isSherpaReady.value) {
+                throw new Error('Sherpa-onnx がロードされていません。ロードボタンを押してください。');
+            }
+            currentJob.value = { jobId: 'browser-gen', progress: 0, message: '音声を生成中 (Sherpa-onnx)...' };
+            
+            for (let i = 0; i < slides.value.length; i++) {
+                const slide = slides.value[i];
+                if (slide && slide.script) {
+                    currentJob.value = { 
+                        jobId: 'browser-gen', 
+                        progress: Math.floor((i / slides.value.length) * 30), 
+                        message: `スライド ${i + 1}/${slides.value.length} の音声を生成中...` 
+                    };
+                    audioBlobs[slide.id] = await sherpaService.generateAudio(slide.script);
+                }
+            }
+        } else {
+            if (!isTransformersReady.value) {
+                throw new Error('Transformers.js がロードされていません。ロードボタンを押してください。');
+            }
+            currentJob.value = { jobId: 'browser-gen', progress: 0, message: '音声を生成中 (Transformers.js)...' };
+            
+            for (let i = 0; i < slides.value.length; i++) {
+                const slide = slides.value[i];
+                if (slide && slide.script) {
+                    currentJob.value = { 
+                        jobId: 'browser-gen', 
+                        progress: Math.floor((i / slides.value.length) * 30), 
+                        message: `スライド ${i + 1}/${slides.value.length} の音声を生成中...` 
+                    };
+                    audioBlobs[slide.id] = await transformersService.generateAudio(slide.script);
+                }
+            }
+        }
+
+        currentJob.value = { jobId: 'browser-gen', progress: 30, message: 'ブラウザで動画を生成中 (FFmpeg.wasm)...' };
+        
+        const videoBlob = await browserVideoGenerator.generateVideo(
+            slides.value,
+            audioBlobs,
+            (progress, message) => {
+                currentJob.value = {
+                    jobId: 'browser-gen',
+                    progress: 30 + Math.floor(progress * 0.7),
+                    message
+                };
+            }
+        );
+        
+        videoUrl.value = window.URL.createObjectURL(videoBlob);
+        currentJob.value = null;
+        isGenerating.value = false;
+        
+        setTimeout(() => {
+          videoSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 100);
+        
+        return;
+    }
+
+    const response = await fetch(`${API_URL}/api/generate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ slides: slides.value, voicevoxSpeaker: voicevoxSpeaker.value }),
+    });
+    
+    const data = await response.json();
+    
+    if (response.ok) {
+      // WebSocket経由でジョブルームに参加
+      sendJson({
+          type: 'join:job',
+          payload: { jobId: data.jobId }
+      });
+
+      currentJob.value = {
+        jobId: data.jobId,
+        progress: 0,
+        message: 'キューに追加されました (待機中...)',
+      };
+    } else {
+      throw new Error(data.error);
+    }
+  } catch (error) {
+    isGenerating.value = false;
+    currentJob.value = null;
+    alert(`生成エラー: ${error}`);
+    console.error(error);
   }
+}
+</script>

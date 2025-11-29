@@ -4,7 +4,7 @@ import { marked } from 'marked';
 const SLIDE_STYLE_ID = 'slide-renderer-styles';
 
 export class SlideRenderer {
-    async render(markdown: string, targetElement: HTMLElement): Promise<Blob> {
+    async render(markdown: string, targetElement?: HTMLElement): Promise<Blob> {
         console.log('[Render] Rendering slide:', markdown.substring(0, 50));
         const htmlContent = (await marked.parse(markdown)).replace(/<!--[\s\S]*?-->/g, '');
 
@@ -43,18 +43,33 @@ export class SlideRenderer {
             .slide-content p { margin-bottom: 20px; }
         `;
 
+
+        // targetElement が渡されていなければオフスクリーンで一時コンテナを作る
+        const createdContainer = !targetElement;
+        const container = targetElement ?? document.createElement('div');
+
+        if (createdContainer) {
+            // 画面に表示せずにレンダリングできるように目に見えない位置に配置
+            container.style.position = 'absolute';
+            container.style.left = '-9999px';
+            container.style.top = '0';
+            container.style.width = '1280px';
+            container.style.height = '720px';
+            document.body.appendChild(container);
+        }
+
         // 既存のコンテンツをクリアし、マークダウンから生成されたHTMLを挿入
-        targetElement.innerHTML = '';
-        targetElement.className = 'slide-preview-container'; // スタイルを適用するためにクラスを設定
+        container.innerHTML = '';
+        container.className = 'slide-preview-container'; // スタイルを適用するためにクラスを設定
 
         const contentWrapper = document.createElement('div');
         contentWrapper.className = 'slide-content';
         contentWrapper.innerHTML = htmlContent;
-        targetElement.appendChild(contentWrapper);
+        container.appendChild(contentWrapper);
 
         try {
             console.log('[Render] Converting to PNG...');
-            const dataUrl = await toPng(targetElement, {
+            const dataUrl = await toPng(container, {
                 width: 1280,
                 height: 720,
                 backgroundColor: '#f0f0f0',
@@ -64,7 +79,14 @@ export class SlideRenderer {
             console.log('[Render] PNG created, size:', blob.size, 'bytes');
             return blob;
         } finally {
-            // targetElementはVueが管理するため、ここでは削除しない
+            // targetElement が渡されなかった場合、自分で作った一時コンテナを削除
+            if (createdContainer) {
+                try {
+                    document.body.removeChild(container);
+                } catch (e) {
+                    // ignore
+                }
+            }
         }
     }
 }
