@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SlideRenderer } from '../slide-renderer';
 import * as htmlToImage from 'html-to-image';
 
@@ -14,27 +14,39 @@ vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
 
 describe('SlideRenderer', () => {
     let renderer: SlideRenderer;
+    let mockTargetElement: HTMLElement;
 
     beforeEach(() => {
         renderer = new SlideRenderer();
         vi.clearAllMocks();
+
+        mockTargetElement = document.createElement('div');
+        // Append to document.body for html-to-image to work correctly in tests
+        document.body.appendChild(mockTargetElement);
+    });
+
+    afterEach(() => {
+        // Clean up the mock element
+        if (document.body.contains(mockTargetElement)) {
+            document.body.removeChild(mockTargetElement);
+        }
     });
 
     it('should render markdown to blob', async () => {
         const markdown = '# Test Slide';
-        const blob = await renderer.render(markdown);
+        const blob = await renderer.render(markdown, mockTargetElement);
 
         expect(blob).toBeInstanceOf(Blob);
-        expect(htmlToImage.toPng).toHaveBeenCalled();
+        expect(mockTargetElement.innerHTML).toContain('<h1>Test Slide</h1>');
+        expect(htmlToImage.toPng).toHaveBeenCalledWith(mockTargetElement, expect.any(Object));
     });
 
-    it('should clean up container after render', async () => {
-        const appendSpy = vi.spyOn(document.body, 'appendChild');
-        const removeSpy = vi.spyOn(document.body, 'removeChild');
+    it('should clear targetElement content before rendering', async () => {
+        mockTargetElement.innerHTML = '<div>Existing Content</div>';
+        const markdown = '# New Slide';
+        await renderer.render(markdown, mockTargetElement);
 
-        await renderer.render('# Test');
-
-        expect(appendSpy).toHaveBeenCalled();
-        expect(removeSpy).toHaveBeenCalled();
+        expect(mockTargetElement.innerHTML).not.toContain('Existing Content');
+        expect(mockTargetElement.innerHTML).toContain('<h1>New Slide</h1>');
     });
 });

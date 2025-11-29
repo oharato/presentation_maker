@@ -118,7 +118,7 @@
                 <label class="block text-sm font-semibold text-gray-700 mb-2">スライド内容（Markdown）</label>
                 <textarea
                   v-model="slide.markdown"
-                  @input="renderSlidePreview(slide)" <!-- Add this line -->
+                  @input="renderSlidePreview(slide, $refs[`slidePreviewContainer_${slide.id}`] as HTMLElement)"
                   placeholder="# タイトル&#10;&#10;- ポイント1&#10;- ポイント2"
                   rows="10"
                   class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
@@ -126,6 +126,11 @@
                 <div v-if="slide.previewUrl" class="mt-4 border border-gray-200 rounded-lg overflow-hidden">
                   <img :src="slide.previewUrl" alt="Slide Preview" class="w-full h-auto object-cover">
                 </div>
+                <!-- Hidden container for slide preview rendering -->
+                <div 
+                  :ref="`slidePreviewContainer_${slide.id}`"
+                  class="slide-preview-container-hidden"
+                ></div>
               </div>
               
               <div>
@@ -451,8 +456,8 @@ const loadTransformers = async () => {
     }
 };
 
-async function renderSlidePreview(slide: Slide) {
-  if (!slide.markdown) {
+async function renderSlidePreview(slide: Slide, targetElement: HTMLElement) {
+  if (!targetElement || !slide.markdown) {
     if (slide.previewUrl) {
       URL.revokeObjectURL(slide.previewUrl);
       slide.previewUrl = undefined;
@@ -460,7 +465,7 @@ async function renderSlidePreview(slide: Slide) {
     return;
   }
   try {
-    const blob = await browserSlideRenderer.render(slide.markdown);
+    const blob = await browserSlideRenderer.render(slide.markdown, targetElement);
     if (slide.previewUrl) {
       URL.revokeObjectURL(slide.previewUrl);
     }
@@ -482,133 +487,25 @@ function addSlide() {
     previewUrl: undefined,
   };
   slides.value.push(newSlide);
-  renderSlidePreview(newSlide); // Render initial empty slide preview
 }
 
-function removeSlide(index: number) {
-  const slideToRemove = slides.value[index];
-  if (slideToRemove?.previewUrl) {
-    URL.revokeObjectURL(slideToRemove.previewUrl);
-  }
-  slides.value.splice(index, 1);
-}
-
-function clearSlides() {
-    if (confirm('入力内容をすべてクリアしますか？')) {
-        slides.value.forEach(slide => {
-            if (slide.previewUrl) {
-                URL.revokeObjectURL(slide.previewUrl);
-            }
-        });
-        slides.value = [];
-        localStorage.removeItem(STORAGE_KEY);
-        currentJob.value = null;
-        videoUrl.value = null;
-        addSlide();
-    }
-}
-
-async function generateVideo() {
-  if (slides.value.length === 0) return;
+onMounted(() => {
+  connectWebSocket();
   
-  isGenerating.value = true;
-  videoUrl.value = null;
-  
-  try {
-    if (audioEngine.value === 'transformers' || audioEngine.value === 'sherpa-onnx') {
-        const audioBlobs: Record<string, Blob> = {};
-        
-        if (audioEngine.value === 'sherpa-onnx') {
-            if (!isSherpaReady.value) {
-                throw new Error('Sherpa-onnx がロードされていません。ロードボタンを押してください。');
-            }
-            currentJob.value = { jobId: 'browser-gen', progress: 0, message: '音声を生成中 (Sherpa-onnx)...' };
-            
-            for (let i = 0; i < slides.value.length; i++) {
-                const slide = slides.value[i];
-                if (slide && slide.script) {
-                    currentJob.value = { 
-                        jobId: 'browser-gen', 
-                        progress: Math.floor((i / slides.value.length) * 30), 
-                        message: `スライド ${i + 1}/${slides.value.length} の音声を生成中...` 
-                    };
-                    audioBlobs[slide.id] = await sherpaService.generateAudio(slide.script);
-                }
-            }
-        } else {
-            if (!isTransformersReady.value) {
-                throw new Error('Transformers.js がロードされていません。ロードボタンを押してください。');
-            }
-            currentJob.value = { jobId: 'browser-gen', progress: 0, message: '音声を生成中 (Transformers.js)...' };
-            
-            for (let i = 0; i < slides.value.length; i++) {
-                const slide = slides.value[i];
-                if (slide && slide.script) {
-                    currentJob.value = { 
-                        jobId: 'browser-gen', 
-                        progress: Math.floor((i / slides.value.length) * 30), 
-                        message: `スライド ${i + 1}/${slides.value.length} の音声を生成中...` 
-                    };
-                    audioBlobs[slide.id] = await transformersService.generateAudio(slide.script);
-                }
-            }
-        }
-
-        currentJob.value = { jobId: 'browser-gen', progress: 30, message: 'ブラウザで動画を生成中 (FFmpeg.wasm)...' };
-        
-        const videoBlob = await browserVideoGenerator.generateVideo(
-            slides.value,
-            audioBlobs,
-            (progress, message) => {
-                currentJob.value = {
-                    jobId: 'browser-gen',
-                    progress: 30 + Math.floor(progress * 0.7),
-                    message
-                };
-            }
-        );
-        
-        videoUrl.value = window.URL.createObjectURL(videoBlob);
-        currentJob.value = null;
-        isGenerating.value = false;
-        
-        setTimeout(() => {
-          videoSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }, 100);
-        
-        return;
-    }
-
-    const response = await fetch(`${API_URL}/api/generate`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ slides: slides.value, voicevoxSpeaker: voicevoxSpeaker.value }),
-    });
-    
-    const data = await response.json();
-    
-    if (response.ok) {
-      // WebSocket経由でジョブルームに参加
-      sendJson({
-          type: 'join:job',
-          payload: { jobId: data.jobId }
-      });
-
-      currentJob.value = {
-        jobId: data.jobId,
-        progress: 0,
-        message: 'キューに追加されました (待機中...)',
-      };
-    } else {
-      throw new Error(data.error);
-    }
-  } catch (error) {
-    isGenerating.value = false;
-    currentJob.value = null;
-    alert(`生成エラー: ${error}`);
-    console.error(error);
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) {
+      try {
+          slides.value = JSON.parse(saved);
+          // Render previews for loaded slides after elements are mounted
+          // This will be handled by watch(slides) combined with the @input event
+      } catch (e) {
+          console.error('Failed to load slides from storage', e);
+          addSlide();
+      }
+  } else {
+      addSlide();
   }
-}
-</script>
+
+  if (transformersService.isReady()) {
+      isTransformersReady.value = true;
+  }
