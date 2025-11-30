@@ -1,5 +1,17 @@
-import fs from 'fs';
-import path from 'path';
+// @ts-nocheck
+// `fs` and `path` are Node built-ins used at runtime by the core renderer.
+// Use dynamic require so this module can be imported in browser/tooling
+// (vue-tsc / vite) without TypeScript trying to resolve Node-only types.
+declare const require: any;
+let fs: any;
+let path: any;
+try {
+  fs = require('fs');
+  path = require('path');
+} catch (e) {
+  fs = undefined;
+  path = undefined;
+}
 
 export const SLIDE_STYLE_ID = 'slide-renderer-styles';
 export const SLIDE_PREVIEW_CLASS = 'slide-preview-container';
@@ -36,7 +48,18 @@ export const SLIDE_CSS = `
 `;
 
 function getMimeType(fp: string) {
-  const ext = path.extname(fp).toLowerCase();
+  let ext = '';
+  try {
+    if (path && typeof (path as any).extname === 'function') {
+      ext = (path as any).extname(fp).toLowerCase();
+    } else {
+      const m = fp.match(/\.([^.?#/\\]+)(?:[?#].*)?$/);
+      ext = m ? `.${m[1].toLowerCase()}` : '';
+    }
+  } catch (e) {
+    ext = '';
+  }
+
   switch (ext) {
     case '.png': return 'image/png';
     case '.jpg':
@@ -55,13 +78,16 @@ export function buildFullHtmlForPuppeteer(innerHtml: string, baseDir?: string) {
   try {
     // Try to locate the repository/workspace root (where `pnpm-workspace.yaml` or top-level `package.json` lives)
     function findRepoRoot(startDir: string) {
+      if (!fs || !path) return startDir;
+      const fsLocal = fs as any;
+      const pathLocal = path as any;
       let dir = startDir;
       let lastWithPackageJson: string | null = null;
       while (true) {
         try {
-          const hasPnpmWorkspace = fs.existsSync(path.join(dir, 'pnpm-workspace.yaml'));
-          const hasGit = fs.existsSync(path.join(dir, '.git'));
-          const hasPackageJson = fs.existsSync(path.join(dir, 'package.json'));
+          const hasPnpmWorkspace = fsLocal.existsSync(pathLocal.join(dir, 'pnpm-workspace.yaml'));
+          const hasGit = fsLocal.existsSync(pathLocal.join(dir, '.git'));
+          const hasPackageJson = fsLocal.existsSync(pathLocal.join(dir, 'package.json'));
 
           if (hasPnpmWorkspace || hasGit) {
             return dir;
@@ -83,30 +109,38 @@ export function buildFullHtmlForPuppeteer(innerHtml: string, baseDir?: string) {
       return startDir;
     }
 
-    const repoRoot = findRepoRoot(process.cwd());
-    const defaultBase = path.join(repoRoot, 'input');
-    if (process.env.SLIDE_RENDER_DEBUG === 'true') {
+    const cwd = (globalThis as any).process && typeof (globalThis as any).process.cwd === 'function'
+      ? (globalThis as any).process.cwd()
+      : '.';
+    const repoRoot = findRepoRoot(cwd);
+    const defaultBase = path ? path.join(repoRoot, 'input') : 'input';
+    if ((globalThis as any).process?.env?.SLIDE_RENDER_DEBUG === 'true') {
       console.log(`SlideRenderer: repoRoot=${repoRoot}, defaultBase=${defaultBase}`);
     }
 
     function searchForLocalFile(srcPath: string, preferredBase?: string) {
       const tried: string[] = [];
 
-      const candidates = [
-        preferredBase && path.resolve(preferredBase, srcPath),
-        path.resolve(process.cwd(), srcPath),
-        path.resolve(defaultBase, srcPath),
-      ].filter(Boolean) as string[];
+      const candidates = [] as string[];
+      try {
+        if (preferredBase && path) candidates.push(path.resolve(preferredBase, srcPath));
+        if (path && (globalThis as any).process && typeof (globalThis as any).process.cwd === 'function') {
+          candidates.push(path.resolve((globalThis as any).process.cwd(), srcPath));
+        }
+        if (path) candidates.push(path.resolve(defaultBase, srcPath));
+      } catch (e) {
+        // ignore candidate resolution errors
+      }
 
-      if (process.env.SLIDE_RENDER_DEBUG === 'true') {
+      if ((globalThis as any).process?.env?.SLIDE_RENDER_DEBUG === 'true') {
         console.log(`SlideRenderer: searchForLocalFile candidates for '${srcPath}': ${JSON.stringify(candidates)}`);
       }
 
       for (const c of candidates) {
         tried.push(c);
         try {
-          if (fs.existsSync(c)) {
-            if (process.env.SLIDE_RENDER_DEBUG === 'true') {
+          if (fs && fs.existsSync && fs.existsSync(c)) {
+            if ((globalThis as any).process?.env?.SLIDE_RENDER_DEBUG === 'true') {
               console.log(`SlideRenderer: searchForLocalFile found file candidate: ${c}`);
             }
             return c;
@@ -117,8 +151,10 @@ export function buildFullHtmlForPuppeteer(innerHtml: string, baseDir?: string) {
       }
 
       // Last resort: search by basename under repo (limited, skipping node_modules/.git/output)
-      const basename = path.basename(srcPath);
-      const root = process.cwd();
+      const basename = path ? path.basename(srcPath) : srcPath;
+      const root = (globalThis as any).process && typeof (globalThis as any).process.cwd === 'function'
+        ? (globalThis as any).process.cwd()
+        : '.';
       const skipDirs = new Set(['node_modules', '.git', 'output', 'dist', 'build']);
 
       const stack = [root];
@@ -127,15 +163,15 @@ export function buildFullHtmlForPuppeteer(innerHtml: string, baseDir?: string) {
         const dir = stack.pop();
         if (!dir) break;
         try {
-          const items = fs.readdirSync(dir);
+          const items = fs && fs.readdirSync ? fs.readdirSync(dir) : [];
           for (const it of items) {
-            const full = path.join(dir, it);
+            const full = (path as any).join(dir, it);
             try {
-              const st = fs.statSync(full);
-              if (st.isFile() && it === basename) {
+              const st = fs && fs.statSync ? fs.statSync(full) : undefined;
+              if (st && st.isFile && st.isFile() && it === basename) {
                 return full;
               }
-              if (st.isDirectory() && !skipDirs.has(it)) {
+              if (st && st.isDirectory && st.isDirectory() && !skipDirs.has(it)) {
                 stack.push(full);
               }
             } catch (e) {
@@ -160,7 +196,7 @@ export function buildFullHtmlForPuppeteer(innerHtml: string, baseDir?: string) {
 
         const found = searchForLocalFile(s, baseDir);
         if (!found) {
-          if (process.env.SLIDE_RENDER_DEBUG === 'true') {
+          if ((globalThis as any).process?.env?.SLIDE_RENDER_DEBUG === 'true') {
             console.log(`SlideRenderer: searchForLocalFile did not find local file for src='${s}' (baseDir='${baseDir || ''}')`);
           }
           return m;
