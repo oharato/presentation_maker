@@ -1,7 +1,6 @@
 import { toPng } from 'html-to-image';
 import { marked } from 'marked';
-
-const SLIDE_STYLE_ID = 'slide-renderer-styles';
+import { SLIDE_STYLE_ID, SLIDE_CSS, SLIDE_PREVIEW_CLASS, SLIDE_CONTENT_CLASS } from '../../../../../packages/core/src/services/slide_template';
 
 export class SlideRenderer {
     async render(markdown: string, targetElement?: HTMLElement): Promise<Blob> {
@@ -15,35 +14,7 @@ export class SlideRenderer {
             styleElement.id = SLIDE_STYLE_ID;
             document.head.appendChild(styleElement);
         }
-        styleElement.textContent = `
-            .slide-preview-container {
-                width: 1280px;
-                height: 720px;
-                display: flex;
-                flex-direction: column;
-                justify-content: center;
-                align-items: center;
-                background-color: #f0f0f0;
-                padding: 50px;
-                box-sizing: border-box;
-                overflow: hidden;
-            }
-            .slide-content {
-                width: 100%;
-                max-width: 1060px;
-                text-align: center;
-                font-family: 'Noto Sans CJK JP', 'Noto Sans JP', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                color: #333;
-                font-size: 32px; 
-                line-height: 1.5;
-            }
-            .slide-content h1 { font-size: 80px; margin-bottom: 40px; color: #000; font-weight: bold; }
-            .slide-content h2 { font-size: 54px; margin-bottom: 26px; color: #444; font-weight: bold; }
-            .slide-content ul { text-align: left; display: block; margin: 0 0 16px 0; padding-left: 40px; list-style-position: outside; }
-            .slide-content li, .slide-content ul li { display: block; margin-bottom: 14px; }
-            .slide-content ul ul { margin-left: 24px; margin-top: 8px; }
-            .slide-content p { margin-bottom: 20px; }
-        `;
+        styleElement.textContent = SLIDE_CSS;
 
 
         // targetElement が渡されていなければオフスクリーンで一時コンテナを作る
@@ -62,10 +33,11 @@ export class SlideRenderer {
 
         // 既存のコンテンツをクリアし、マークダウンから生成されたHTMLを挿入
         container.innerHTML = '';
-        container.className = 'slide-preview-container'; // スタイルを適用するためにクラスを設定
+
+        container.className = SLIDE_PREVIEW_CLASS; // スタイルを適用するためにクラスを設定
 
         const contentWrapper = document.createElement('div');
-        contentWrapper.className = 'slide-content';
+        contentWrapper.className = SLIDE_CONTENT_CLASS;
         contentWrapper.innerHTML = htmlContent;
         container.appendChild(contentWrapper);
 

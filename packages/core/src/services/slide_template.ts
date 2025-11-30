@@ -26,9 +26,9 @@ export const SLIDE_CSS = `
 }
 .${SLIDE_CONTENT_CLASS} h1 { font-size: 80px; margin-bottom: 40px; color: #000; font-weight: bold; }
 .${SLIDE_CONTENT_CLASS} h2 { font-size: 54px; margin-bottom: 26px; color: #444; font-weight: bold; }
-.${SLIDE_CONTENT_CLASS} ul { text-align: left; display: block; margin: 0 0 16px 0; padding-left: 40px; list-style-position: outside; }
-.${SLIDE_CONTENT_CLASS} li, .${SLIDE_CONTENT_CLASS} ul li { display: block; margin-bottom: 14px; }
-.${SLIDE_CONTENT_CLASS} ul ul { margin-left: 24px; margin-top: 8px; }
+.${SLIDE_CONTENT_CLASS} ul { text-align: left; display: block; margin: 0 0 16px 0; padding-left: 28px; list-style-position: inside; list-style-type: disc; }
+.${SLIDE_CONTENT_CLASS} li, .${SLIDE_CONTENT_CLASS} ul li { display: list-item; margin-bottom: 14px; }
+.${SLIDE_CONTENT_CLASS} ul ul { margin-left: 20px; margin-top: 8px; }
 .${SLIDE_CONTENT_CLASS} p { margin-bottom: 20px; }
 `;
 
