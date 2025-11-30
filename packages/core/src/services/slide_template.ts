@@ -19,25 +19,51 @@ export const SLIDE_CONTENT_CLASS = 'slide-content';
 
 export const SLIDE_CSS = `
 .${SLIDE_PREVIEW_CLASS} {
-  width: 1280px;
-  height: 720px;
+  /* Match target video/frame resolution so the slide fills the 1920x1080 viewport */
+  width: 1920px;
+  height: 1080px;
   display: flex;
   flex-direction: column;
+  /* Center by default so slides like preface/title stay vertically centered */
   justify-content: center;
   align-items: center;
   background-color: #f0f0f0;
-  padding: 50px;
+  /* provide modest padding so very large headings don't touch the top edge */
+  padding-top: 40px;
+  padding-left: 60px;
+  padding-right: 60px;
   box-sizing: border-box;
   overflow: hidden;
 }
 .${SLIDE_CONTENT_CLASS} {
   width: 100%;
-  max-width: 1060px;
+  /* widen content area to give more horizontal space for bulleted lists/images */
+  max-width: 1500px;
+  margin: 0 auto;
   text-align: center;
   font-family: 'Noto Sans CJK JP', 'Noto Sans JP', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   color: #333;
   font-size: 32px;
   line-height: 1.5;
+  /* vertically center inner content while respecting container padding */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  max-height: calc(100% - 80px);
+  box-sizing: border-box;
+}
+.slide-content [style*="min-height"] {
+    /* Neutralize any inline fullscreen min-height that child content may set
+      (e.g. min-height:100vh) so it doesn't overflow the slide frame and
+      force top-alignment. */
+  min-height: auto !important;
+  max-height: calc(100% - 80px) !important;
+  overflow: auto !important;
+}
+.slide-content > div[style*="display:flex"] {
+  /* If a direct child uses a two-column flex with height rules, make it
+     fit the slide content area and vertically center its items. */
+  align-items: center !important;
 }
 .${SLIDE_CONTENT_CLASS} h1 { font-size: 80px; margin-bottom: 40px; color: #000; font-weight: bold; }
 .${SLIDE_CONTENT_CLASS} h2 { font-size: 54px; margin-bottom: 26px; color: #444; font-weight: bold; }
@@ -230,19 +256,23 @@ export function buildFullHtmlForPuppeteer(innerHtml: string, baseDir?: string) {
         background-color: #f0f0f0;
         color: #333;
         margin: 0;
-        padding: 80px;
+        padding: 0;
         box-sizing: border-box;
         font-size: 48px;
         overflow: hidden;
       }
-      .content { width: 100%; max-width: 1600px; text-align: center; }
+      /* Center a content column but ensure the actual slide preview uses the
+         exact frame size (1920x1080) so rendered PNGs are full-frame slides. */
+      .content { width: 100%; display: flex; justify-content: center; }
       ${SLIDE_CSS}
     </style>
   </head>
   <body>
     <div class="content">
-      <div class="${SLIDE_CONTENT_CLASS}">
-        ${innerHtml}
+      <div class="${SLIDE_PREVIEW_CLASS}">
+        <div class="${SLIDE_CONTENT_CLASS}">
+          ${innerHtml}
+        </div>
       </div>
     </div>
   </body>
