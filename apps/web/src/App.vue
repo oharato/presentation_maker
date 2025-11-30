@@ -109,14 +109,32 @@
             
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-2">スライド内容（Markdown）</label>
-                <textarea
-                  v-model="slide.markdown"
-                  @input="renderSlidePreview(slide)"
-                  placeholder="# タイトル&#10;&#10;- ポイント1&#10;- ポイント2"
-                  rows="10"
-                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
-                ></textarea>
+                
+                <div class="flex items-center justify-between mb-2">
+                  <label class="block text-sm font-semibold text-gray-700">スライド内容（Markdown）</label>
+                  <button
+                    type="button"
+                    @click="togglePreview(slide)"
+                    class="text-sm px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded-md border border-gray-200"
+                  >
+                    {{ slide.showPreview ? '編集に戻す' : 'プレビュー' }}
+                  </button>
+                </div>
+
+                <div v-if="!slide.showPreview">
+                  <textarea
+                    v-model="slide.markdown"
+                    @input="renderSlidePreview(slide)"
+                    placeholder="# タイトル&#10;&#10;- ポイント1&#10;- ポイント2"
+                    rows="10"
+                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+                  ></textarea>
+                </div>
+
+                            <div v-else class="w-full px-4 py-3 border border-gray-300 rounded-lg bg-white" style="min-height: 220px;">
+                              <div v-if="slide.previewHtml" :class="['prose', 'max-w-none', SLIDE_CONTENT_CLASS]" v-html="slide.previewHtml"></div>
+                              <div v-else class="text-sm text-gray-500">レンダリング中...</div>
+                            </div>
 
               </div>
               
@@ -183,14 +201,17 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch } from 'vue';
+import { marked } from 'marked';
 import { sherpaService, transformersService, type AudioEngine } from './services/audio';
-import { BrowserVideoGenerator, SlideRenderer as BrowserSlideRenderer } from './services/video';
+import { BrowserVideoGenerator } from './services/video';
+import { SLIDE_STYLE_ID, SLIDE_CSS, SLIDE_CONTENT_CLASS } from '../../../packages/core/src/services/slide_template';
 
 interface Slide {
   id: string;
   markdown: string;
   script: string;
-  previewUrl?: string; // Add this line
+  previewHtml?: string;
+  showPreview?: boolean;
 }
 
 interface JobProgress {
@@ -200,7 +221,6 @@ interface JobProgress {
 }
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-const browserSlideRenderer = new BrowserSlideRenderer();
 // WebSocket URLの構築: 環境変数 `VITE_WS_URL` を優先し、未設定時は API のホストに対して
 // `/api/ws/connect/global` を使う（本番で Worker が `/api/*` に割り当てられている想定）
 const getWsUrl = () => {
@@ -365,6 +385,17 @@ function handleWsMessage(data: any) {
 
 onMounted(() => {
   connectWebSocket();
+  // Ensure slide preview CSS is present for inline HTML previews (v-html)
+  try {
+    if (typeof document !== 'undefined' && !document.getElementById(SLIDE_STYLE_ID)) {
+      const style = document.createElement('style');
+      style.id = SLIDE_STYLE_ID;
+      style.textContent = SLIDE_CSS;
+      document.head.appendChild(style);
+    }
+  } catch (e) {
+    console.warn('Failed to inject slide CSS for preview:', e);
+  }
   
   const saved = localStorage.getItem(STORAGE_KEY);
   if (saved) {
@@ -443,24 +474,16 @@ const loadTransformers = async () => {
 
 async function renderSlidePreview(slide: Slide) {
   if (!slide.markdown) {
-    if (slide.previewUrl) {
-      URL.revokeObjectURL(slide.previewUrl);
-      slide.previewUrl = undefined;
-    }
+    slide.previewHtml = undefined;
     return;
   }
   try {
-    const blob = await browserSlideRenderer.render(slide.markdown);
-    if (slide.previewUrl) {
-      URL.revokeObjectURL(slide.previewUrl);
-    }
-    slide.previewUrl = URL.createObjectURL(blob);
+    // Generate HTML preview from markdown and set it for inline preview
+    const html = (await marked.parse(slide.markdown)).replace(/<!--[\s\S]*?-->/g, '');
+    slide.previewHtml = html;
   } catch (error) {
     console.error('Failed to render slide preview:', error);
-    if (slide.previewUrl) {
-      URL.revokeObjectURL(slide.previewUrl);
-      slide.previewUrl = undefined;
-    }
+    slide.previewHtml = undefined;
   }
 }
 
@@ -469,26 +492,33 @@ function addSlide() {
     id: Date.now().toString(),
     markdown: '',
     script: '',
-    previewUrl: undefined,
+    previewHtml: undefined,
+    showPreview: false,
   };
   slides.value.push(newSlide);
   renderSlidePreview(newSlide); // Render initial empty slide preview
 }
 
-function removeSlide(index: number) {
-  const slideToRemove = slides.value[index];
-  if (slideToRemove?.previewUrl) {
-    URL.revokeObjectURL(slideToRemove.previewUrl);
+async function togglePreview(slide: Slide) {
+  slide.showPreview = !slide.showPreview;
+  if (slide.showPreview && !slide.previewHtml && slide.markdown) {
+    try {
+      await renderSlidePreview(slide);
+    } catch (e) {
+      console.error('Preview render failed on toggle:', e);
+    }
   }
+}
+
+function removeSlide(index: number) {
   slides.value.splice(index, 1);
 }
 
 function clearSlides() {
     if (confirm('入力内容をすべてクリアしますか？')) {
         slides.value.forEach(slide => {
-            if (slide.previewUrl) {
-                URL.revokeObjectURL(slide.previewUrl);
-            }
+          // clear previewHtml if present
+          if (slide.previewHtml) slide.previewHtml = undefined;
         });
         slides.value = [];
         localStorage.removeItem(STORAGE_KEY);
