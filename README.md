@@ -106,6 +106,46 @@ CLI（`apps/cli`）でのローカルメディア生成フローに関する重�
 	- 再エンコード concat は PTS 再生成フラグ（`-fflags +genpts -avoid_negative_ts make_zero`）を使い、必要に応じて全入力を同一解像度/コーデックに正規化します。
 	- 再エンコード時は規定解像度（デフォルト `1920x1080`）に「アスペクト比を維持してフィット（scale+pad）」するフィルタを適用します。
 
+### ローカル生成のデバッグとログ制御
+
+開発中にローカルでメディア生成（FFmpeg / Puppeteer）をデバッグしやすくするため、いくつかの環境変数を用意しています。必要に応じてオン／オフしてログの詳細を切り替えてください。
+
+- **`SLIDE_RENDER_KEEP_HTML=true`**: 一時的に作成される Puppeteer 用の HTML を `output/temp_slide_<timestamp>.html` のように保持します。inliner の動作確認や手動検証に便利です。
+- **`SLIDE_RENDER_DEBUG=true`**: スライド HTML のローカル画像解決（inliner）がどの候補パスを探索したか等のデバッグログを有効にします。
+- **`FFMPEG_VERBOSE=true`**: デフォルトでは FFmpeg の大量出力（フレーム情報等）は抑制されています。詳細な進行ログが必要な場合はこの値を `true` にして実行してください。
+
+例: 詳細ログを有効にして ID `020` を処理する
+
+```bash
+export SLIDE_RENDER_KEEP_HTML=true SLIDE_RENDER_DEBUG=true FFMPEG_VERBOSE=true
+pnpm cli 020
+```
+
+例: 通常は FFmpeg の冗長ログを抑えて実行する
+
+```bash
+export SLIDE_RENDER_KEEP_HTML=true SLIDE_RENDER_DEBUG=true
+unset FFMPEG_VERBOSE
+pnpm cli 020
+```
+
+これらのフラグは `packages/core` 内のユーティリティによって参照されます（`packages/core/src/services/slide_template.ts` と `packages/core/src/utils/ffmpeg.ts`）。
+
+### 画像のインライン化（Puppeteer用HTML）について
+
+Markdown 内で相対パスの画像（例: `![](./e-book-list-demo.png)`）を使う場合、Puppeteer が `file://` から HTML を読み込むためそのままだと画像が解決されないことがあります。本プロジェクトでは HTML を Puppeteer に渡す前に、相対画像を data:URI に変換する inliner を実装しました。
+
+- 処理箇所: `packages/core/src/services/slide_template.ts`
+- 動作: `<img src="./foo.png">` を探索し、見つかれば `data:image/...;base64,...` に置換して HTML を返します。
+- 探索順序（既定）:
+	1. `baseDir` が呼び出し元から渡されていればその中を優先
+	2. `process.cwd()` からの解決
+	3. リポジトリルート（`pnpm-workspace.yaml` または上位の `package.json` を基準）内の `input/` ディレクトリ
+	4. 最後の手段として短い深さでリポジトリ内を basename 検索
+
+このロジックにより、モノレポの各パッケージで CLI を実行しても `input/` 下の素材が見つかるようにしています。より確実にしたい場合は、`renderSlide` の呼び出し元で明示的に `baseDir` を渡すことを推奨します。
+
+
 - **画像からの動画化**: `imageToVideo`（スライド画像 → 無音動画）は、画像をアスペクト比を維持してターゲット解像度にフィット（中央パディング）する `scale+pad` フィルタを使用します。デフォルト解像度は `1920x1080` です。
 
 - **CLI 引数の便利機能**:

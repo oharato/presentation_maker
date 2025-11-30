@@ -5,10 +5,10 @@ import path from 'path';
 import { buildFullHtmlForPuppeteer } from './slide_template';
 
 export class SlideRenderer {
-  async renderSlide(markdown: string, outputPath: string): Promise<void> {
+  async renderSlide(markdown: string, outputPath: string, baseDir?: string): Promise<void> {
     const htmlContent = await marked.parse(markdown);
 
-    const fullHtml = buildFullHtmlForPuppeteer(htmlContent);
+    const fullHtml = buildFullHtmlForPuppeteer(htmlContent, baseDir);
 
     const args: string[] = [];
     if (process.env.PUPPETEER_NO_SANDBOX === 'true') {
@@ -37,6 +37,13 @@ export class SlideRenderer {
       tempHtmlPath = path.join(outputDir, `temp_slide_${Date.now()}.html`);
       await fs.writeFile(tempHtmlPath, fullHtml);
 
+        // Log whether images were inlined to help debugging; optionally keep the HTML when
+        // SLIDE_RENDER_KEEP_HTML=true is set in the environment.
+        try {
+          const inlineCount = (fullHtml.match(/data:image\//g) || []).length;
+          console.log(`SlideRenderer: inlined ${inlineCount} images into HTML: ${tempHtmlPath}`);
+        } catch (e) {}
+
       // file:// URLとしてページをロード
       await page.goto(`file://${tempHtmlPath}`, { waitUntil: 'networkidle0' });
 
@@ -55,7 +62,15 @@ export class SlideRenderer {
         await browser.close();
       }
       if (tempHtmlPath) {
-        await fs.remove(tempHtmlPath); // 一時ファイルを削除
+        try {
+          if (process.env.SLIDE_RENDER_KEEP_HTML === 'true') {
+            console.log(`SlideRenderer: kept temp HTML for inspection: ${tempHtmlPath}`);
+          } else {
+            await fs.remove(tempHtmlPath); // 一時ファイルを削除
+          }
+        } catch (e) {
+          // ignore cleanup errors
+        }
       }
     }
   }

@@ -64,7 +64,7 @@ export function setupVideoWorker(io: SocketIOServer) {
 
                 // Generate slide image
                 console.log(`[Job ${jobId}] Rendering slide image for slide ${slideNum}...`);
-                await slideRenderer.renderSlide(slide.markdown, imagePath);
+                    await slideRenderer.renderSlide(slide.markdown, imagePath);
                 console.log(`[Job ${jobId}] Slide image rendered for slide ${slideNum}`);
 
                 // Generate silent video

@@ -21,27 +21,38 @@ export const FFPROBE_PATH = process.env.FFPROBE_PATH || ffprobeInstaller.path;
  */
 export async function runFFmpeg(args: string[]): Promise<void> {
     return new Promise((resolve, reject) => {
-        console.log(`Running FFmpeg: ${FFMPEG_PATH} ${args.map(a => a.includes(' ') ? `"${a}"` : a).join(' ')}`);
-        const process = spawn(FFMPEG_PATH, args);
+        const verbose = process.env.FFMPEG_VERBOSE === 'true';
+        if (verbose) {
+            console.log(`Running FFmpeg: ${FFMPEG_PATH} ${args.map(a => a.includes(' ') ? `"${a}"` : a).join(' ')}`);
+        }
+
+        const child = spawn(FFMPEG_PATH, args);
 
         let stderr = '';
 
-        process.stderr.on('data', (data) => {
+        child.stderr.on('data', (data) => {
             const text = data.toString();
             stderr += text;
-            // Stream stderr to console so runtime logs show ffmpeg progress/errors immediately
-            console.error(text);
+            // Only emit ffmpeg stderr to console when verbose mode is enabled.
+            if (verbose) {
+                console.error(text);
+            }
         });
 
-        process.on('close', (code) => {
+        child.on('close', (code) => {
             if (code === 0) {
                 resolve();
             } else {
+                // If not verbose, emit a short stderr summary to help debugging
+                if (!verbose) {
+                    const summary = stderr.split('\n').slice(0, 20).join('\n');
+                    console.error('FFmpeg error (summary):', summary);
+                }
                 reject(new Error(`FFmpeg exited with code ${code}: ${stderr}`));
             }
         });
 
-        process.on('error', (err) => {
+        child.on('error', (err) => {
             reject(err);
         });
     });
