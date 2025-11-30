@@ -131,10 +131,12 @@
                   ></textarea>
                 </div>
 
-                            <div v-else class="w-full px-4 py-3 border border-gray-300 rounded-lg bg-white" style="min-height: 220px;">
-                              <div v-if="slide.previewHtml" :class="['prose', 'max-w-none', SLIDE_CONTENT_CLASS]" v-html="slide.previewHtml"></div>
-                              <div v-else class="text-sm text-gray-500">レンダリング中...</div>
-                            </div>
+                <div v-else :id="'preview-'+slide.id" class="w-full px-4 py-3 border border-gray-300 rounded-lg bg-white slide-preview-viewport" style="min-height: 220px; overflow:hidden; display:flex; align-items:flex-start; justify-content:center;">
+                  <div v-if="slide.previewHtml" :class="[SLIDE_PREVIEW_CLASS]">
+                    <div :class="[SLIDE_CONTENT_CLASS, 'prose', 'max-w-none']" v-html="slide.previewHtml"></div>
+                  </div>
+                  <div v-else class="text-sm text-gray-500">レンダリング中...</div>
+                </div>
 
               </div>
               
@@ -200,11 +202,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue';
+import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { marked } from 'marked';
 import { sherpaService, transformersService, type AudioEngine } from './services/audio';
 import { BrowserVideoGenerator } from './services/video';
-import { SLIDE_STYLE_ID, SLIDE_CSS, SLIDE_CONTENT_CLASS } from '../../../packages/core/src/services/slide_template';
+import { SLIDE_STYLE_ID, SLIDE_CSS, SLIDE_CONTENT_CLASS, SLIDE_PREVIEW_CLASS } from '../../../packages/core/src/services/slide_template';
 
 interface Slide {
   id: string;
@@ -234,6 +236,7 @@ const getWsUrl = () => {
   } catch (e) {
     return 'ws://localhost:8787/api/ws/connect/global';
   }
+
 };
 
 const STORAGE_KEY = 'presentation_maker_slides';
@@ -257,6 +260,8 @@ const isTransformersReady = ref(false);
 const transformersError = ref<string | null>(null);
 
 const videoSection = ref<HTMLElement | null>(null);
+
+let previewResizeHandler: (() => void) | null = null;
 
 let socket: WebSocket | null = null;
 let pingInterval: number | undefined;
@@ -396,6 +401,11 @@ onMounted(() => {
   } catch (e) {
     console.warn('Failed to inject slide CSS for preview:', e);
   }
+  // Expose adjustScale for debugging in browser console
+  try {
+    // @ts-ignore
+    window.__adjustScale = adjustScale;
+  } catch (e) {}
   
   const saved = localStorage.getItem(STORAGE_KEY);
   if (saved) {
@@ -419,6 +429,15 @@ onMounted(() => {
   }
   
   updateBrowserMode();
+  // Recompute scales on resize
+  previewResizeHandler = () => {
+    slides.value.forEach(s => {
+      if (s.showPreview) adjustScale(s.id);
+    });
+  };
+  window.addEventListener('resize', previewResizeHandler);
+  // initial adjust
+  previewResizeHandler();
 });
 
 watch(audioEngine, () => {
@@ -442,6 +461,10 @@ onUnmounted(() => {
   stopHeartbeat();
   if (reconnectTimeout) clearTimeout(reconnectTimeout);
   socket?.close();
+  if (previewResizeHandler) {
+    try { window.removeEventListener('resize', previewResizeHandler); } catch (e) {}
+    previewResizeHandler = null;
+  }
 });
 
 const loadSherpa = async () => {
@@ -481,9 +504,116 @@ async function renderSlidePreview(slide: Slide) {
     // Generate HTML preview from markdown and set it for inline preview
     const html = (await marked.parse(slide.markdown)).replace(/<!--[\s\S]*?-->/g, '');
     slide.previewHtml = html;
+    // Wait DOM update then adjust scaling for this slide if visible
+    await nextTick();
+    if (slide.showPreview) {
+      await adjustScale(slide.id);
+    }
   } catch (error) {
     console.error('Failed to render slide preview:', error);
     slide.previewHtml = undefined;
+  }
+}
+
+async function adjustScale(slideId: string) {
+  try {
+    const wrapper = document.getElementById('preview-' + slideId);
+    if (!wrapper) return;
+
+    const previewEl = wrapper.querySelector('.' + SLIDE_PREVIEW_CLASS) as HTMLElement | null;
+    const contentEl = wrapper.querySelector('.' + SLIDE_CONTENT_CLASS) as HTMLElement | null;
+    const target = contentEl || previewEl;
+    if (!target) return;
+
+    // Reset transforms on both potential elements to avoid compounded transforms
+    try { if (previewEl) { previewEl.style.transform = ''; previewEl.style.left = ''; previewEl.style.position = ''; } } catch(e) {}
+    try { if (contentEl) { contentEl.style.transform = ''; contentEl.style.left = ''; contentEl.style.position = ''; contentEl.style.display = ''; } } catch(e) {}
+
+    // If fonts are still loading, schedule a retry after fonts finish loading (but continue with current measurement)
+    try {
+      if ((document as any).fonts && (document as any).fonts.status !== 'loaded') {
+        (document as any).fonts.ready.then(() => {
+          try { adjustScale(slideId); } catch (err) {}
+        });
+      }
+    } catch (e) {}
+
+    const wrapperRect = wrapper.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+
+    const wrapperWidth = wrapperRect.width;
+    const wrapperHeight = wrapperRect.height;
+
+    // If there is an explicit preview container (design canvas), prefer using
+    // its design dimensions (1280x720) as the basis for scaling so the preview
+    // matches Puppeteer output. Fall back to measured targetRect when absent.
+    const DESIGN_WIDTH = 1280;
+    const DESIGN_HEIGHT = 720;
+    let targetWidth = targetRect.width || (target as HTMLElement).offsetWidth;
+    let targetHeight = targetRect.height || (target as HTMLElement).offsetHeight;
+    try {
+      if ((target as HTMLElement).scrollWidth && (target as HTMLElement).scrollWidth > targetWidth) targetWidth = (target as HTMLElement).scrollWidth;
+      if ((target as HTMLElement).scrollHeight && (target as HTMLElement).scrollHeight > targetHeight) targetHeight = (target as HTMLElement).scrollHeight;
+    } catch (e) {}
+
+    // If preview container exists, treat it as the design canvas with fixed
+    // dimensions. Force those dimensions on the element so measurement is
+    // consistent even when it's placed inside a narrow flexbox.
+    let applyTo: HTMLElement = contentEl || previewEl || target as HTMLElement;
+    let usedWidth = targetWidth;
+    let usedHeight = targetHeight;
+    if (previewEl) {
+      try {
+        // Force the preview container to the design size so we compute scale
+        // relative to the intended video/canvas resolution. Because the
+        // preview sits inside a flex parent it may be auto-shrunk; to avoid
+        // that we set flex to prevent shrinking and use the canonical
+        // DESIGN_WIDTH / DESIGN_HEIGHT for scale calculations (don't rely on
+        // rendered bounding box which may equal the wrapper size).
+        previewEl.style.width = DESIGN_WIDTH + 'px';
+        previewEl.style.height = DESIGN_HEIGHT + 'px';
+        previewEl.style.flex = '0 0 auto';
+        usedWidth = DESIGN_WIDTH;
+        usedHeight = DESIGN_HEIGHT;
+        applyTo = previewEl;
+      } catch (e) {}
+    }
+
+    if (!usedWidth || !usedHeight) return;
+
+    const scale = Math.min(1, wrapperWidth / usedWidth, wrapperHeight / usedHeight);
+    try {
+      applyTo.style.transformOrigin = 'top left';
+      // make sure transform affects layout visually
+      applyTo.style.display = 'block';
+      // If we're using the preview container, position it absolutely within
+      // the wrapper so we can control exact placement regardless of flex
+      // centering behavior. Otherwise fall back to relative positioning.
+      const scaledWidth = usedWidth * scale;
+      const left = Math.max(0, (wrapperWidth - scaledWidth) / 2);
+
+      if (previewEl) {
+        try {
+          // ensure wrapper is the positioning context
+          wrapper.style.position = wrapper.style.position || 'relative';
+          previewEl.style.position = 'absolute';
+          previewEl.style.top = '0px';
+          previewEl.style.left = `${left}px`;
+          previewEl.style.transform = `scale(${scale})`;
+        } catch (e) {}
+      } else {
+        applyTo.style.position = 'relative';
+        applyTo.style.left = `${left}px`;
+        applyTo.style.transform = `scale(${scale})`;
+      }
+
+      // Force a reflow so browser applies transform immediately
+      void applyTo.offsetHeight;
+    } catch (e) {
+      // ignore per-slate errors
+    }
+  } catch (e) {
+    // ignore
   }
 }
 
@@ -507,6 +637,10 @@ async function togglePreview(slide: Slide) {
     } catch (e) {
       console.error('Preview render failed on toggle:', e);
     }
+  } else if (slide.showPreview && slide.previewHtml) {
+    // Already have HTML, ensure scaling is applied
+    await nextTick();
+    adjustScale(slide.id);
   }
 }
 
