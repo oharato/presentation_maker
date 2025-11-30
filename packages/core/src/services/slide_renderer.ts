@@ -39,7 +39,7 @@ export class SlideRenderer {
           }
           h1 { font-size: 120px; margin-bottom: 60px; color: #000; }
           h2 { font-size: 80px; margin-bottom: 40px; color: #444; }
-          ul { text-align: left; display: inline-block; }
+          ul { text-align: left; display: block; margin: 0 0 16px 0; padding-left: 40px; list-style-position: outside; }
           li { margin-bottom: 20px; }
           p { margin-bottom: 30px; }
         </style>

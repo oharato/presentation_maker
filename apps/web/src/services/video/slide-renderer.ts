@@ -7,6 +7,7 @@ export class SlideRenderer {
     async render(markdown: string, targetElement?: HTMLElement): Promise<Blob> {
         console.log('[Render] Rendering slide:', markdown.substring(0, 50));
         const htmlContent = (await marked.parse(markdown)).replace(/<!--[\s\S]*?-->/g, '');
+        console.log('[Render] Generated HTML:', htmlContent);
 
         let styleElement = document.getElementById(SLIDE_STYLE_ID) as HTMLStyleElement;
         if (!styleElement) {
@@ -38,8 +39,9 @@ export class SlideRenderer {
             }
             .slide-content h1 { font-size: 80px; margin-bottom: 40px; color: #000; font-weight: bold; }
             .slide-content h2 { font-size: 54px; margin-bottom: 26px; color: #444; font-weight: bold; }
-            .slide-content ul { text-align: left; display: inline-block; margin: 0; padding-left: 40px; }
-            .slide-content li { margin-bottom: 14px; }
+            .slide-content ul { text-align: left; display: block; margin: 0 0 16px 0; padding-left: 40px; list-style-position: outside; }
+            .slide-content li, .slide-content ul li { display: block; margin-bottom: 14px; }
+            .slide-content ul ul { margin-left: 24px; margin-top: 8px; }
             .slide-content p { margin-bottom: 20px; }
         `;
 
