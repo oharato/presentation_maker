@@ -27,11 +27,47 @@ let processedJobs = 0;
 let currentJobId: string | null = null;
 let errors: string[] = [];
 
+// Log buffer for debugging
+const MAX_LOGS = 1000;
+const logBuffer: string[] = [];
+
+function captureLog(type: 'log' | 'warn' | 'error', ...args: any[]) {
+    const msg = `[${new Date().toISOString()}] [${type.toUpperCase()}] ${args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ')}`;
+    logBuffer.push(msg);
+    if (logBuffer.length > MAX_LOGS) {
+        logBuffer.shift();
+    }
+}
+
+// Override console methods to capture logs
+const originalLog = console.log;
+const originalWarn = console.warn;
+const originalError = console.error;
+
+console.log = (...args: any[]) => {
+    captureLog('log', ...args);
+    originalLog.apply(console, args);
+};
+console.warn = (...args: any[]) => {
+    captureLog('warn', ...args);
+    originalWarn.apply(console, args);
+};
+console.error = (...args: any[]) => {
+    captureLog('error', ...args);
+    originalError.apply(console, args);
+};
+
 const server = http.createServer((req, res) => {
     // Respond to keepalive probes and any basic request
     if (req.url && req.url.includes('keepalive')) {
         res.writeHead(200, { 'Content-Type': 'text/plain' });
         res.end('ok');
+        return;
+    }
+
+    if (req.url && req.url.includes('logs')) {
+        res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end(logBuffer.join('\n'));
         return;
     }
 
@@ -70,7 +106,7 @@ console.log(`  R2_ACCOUNT_ID=${process.env.R2_ACCOUNT_ID}`);
 console.log(`  R2_ENDPOINT=${process.env.R2_ENDPOINT}`);
 
 // Explicitly bind to LISTEN_HOST (default 0.0.0.0) to ensure we are accessible
-server.listen(PORT_NUM, () => {
+server.listen(PORT_NUM, LISTEN_HOST, () => {
     // Attempt to read the address information after bind
     try {
         const addr = server.address();
@@ -261,21 +297,24 @@ async function waitForVoicevox() {
     let attempt = 0;
     while (true) {
         attempt++;
-        console.log(`Attempting to connect to Voicevox (attempt ${attempt})...`);
+        if (attempt % 5 === 0) { // Reduce log noise, log every 5th attempt
+             console.log(`Attempting to connect to Voicevox (attempt ${attempt})...`);
+        }
         try {
             const res = await fetch(`${VOICEVOX_URL}/version`);
             if (res.ok) {
                 console.log('Voicevox is ready.');
                 break;
             } else {
-                console.log(`Voicevox responded with status ${res.status}. Retrying...`);
+                console.error(`Voicevox responded with status ${res.status}. Retrying...`);
             }
         } catch (e: any) {
-            console.log(`Voicevox connection failed: ${e.message || e}. Retrying...`);
+            // Log connection errors to stderr to ensure visibility
+            console.error(`Voicevox connection failed (attempt ${attempt}): ${e.message || e}. Retrying...`);
         }
         
-        if (Date.now() - start > 60000) {
-             console.warn('Voicevox startup is taking longer than 60s...');
+        if (Date.now() - start > 120000) { // 2 minutes timeout
+             console.error('Voicevox startup is taking longer than 120s...');
         }
         
         await new Promise(resolve => setTimeout(resolve, 1000));
@@ -283,7 +322,8 @@ async function waitForVoicevox() {
 }
 
 async function main() {
-    console.log('Video Worker started v1.2');
+    console.log('*** Video Worker MAIN execution started ***'); // Explicit start log
+    console.log('Video Worker started v1.3');
     console.log(`API URL: ${API_URL}`);
 
     // Update global lastActivityTime
@@ -458,6 +498,7 @@ async function main() {
 
                 // 8. Completed notification
                 await updateJobStatus(jobId, 'completed', {
+                    jobId,
                     progress: 100,
                     message: 'Video generation completed',
                     videoUrl: typeof finalPublicUrl !== 'undefined' ? finalPublicUrl : (finalPresentationPath ? `${R2_PUBLIC_URL}/jobs/${jobId}/final_presentation.mp4` : undefined),
