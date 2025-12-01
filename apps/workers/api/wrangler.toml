@@ -55,7 +55,7 @@ class_name = "JobManager"
 name = "presentation-maker"
 # NOTE: Do NOT store secrets in this file. Set CONTAINER_API_TOKEN as a secret:
 #   npx wrangler secret put CONTAINER_API_TOKEN --env production --config apps/workers/api/wrangler.toml
-vars = { ENVIRONMENT = "production", CONTAINER_API_URL = "https://presentation-maker.ohchans.com" }
+vars = { ENVIRONMENT = "production", CONTAINER_API_URL = "https://presentation-maker.ohchans.com/video-worker" }
 [[env.production.routes]]
 pattern = "presentation-maker.ohchans.com/api/*"
 zone_name = "ohchans.com"

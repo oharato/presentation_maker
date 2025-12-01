@@ -23,31 +23,12 @@ export class ContainerManager {
         // 本来は Cloudflare Worker の Bindings (c.env) を参照するが、
         // wrangler dev 環境や Docker 内で実行する場合はプロセス環境変数に設定していることがある。
         const containerApiUrl = (this.env && (this.env as any).CONTAINER_API_URL) || (typeof process !== 'undefined' ? process.env.CONTAINER_API_URL : undefined);
-        const containerApiToken = (this.env && (this.env as any).CONTAINER_API_TOKEN) || (typeof process !== 'undefined' ? process.env.CONTAINER_API_TOKEN : undefined);
-
-        // 開発環境であれば docker-compose のサービス名を使ったフォールバックを許容する
-        const envName = (this.env && (this.env as any).ENVIRONMENT) || (typeof process !== 'undefined' ? process.env.ENVIRONMENT : undefined);
-        let resolvedContainerApiUrl = containerApiUrl;
-        if (!resolvedContainerApiUrl && envName === 'development') {
-            resolvedContainerApiUrl = 'http://video-worker:80';
-            console.log('Container API URL not provided in bindings; using development fallback:', resolvedContainerApiUrl);
-        }
-
-        if (!resolvedContainerApiUrl) {
-            console.log('Container API URL not set, skipping container start');
-            return;
-        }
-
-        try {
-            console.log('Starting container...');
-
-            // If an external container API URL is provided, and we are not in development with a fallback,
-            // we assume the platform handles container startup and no explicit API call is needed here.
-            // The worker itself polls for jobs.
-            console.log('Container start request intended, relying on platform or worker polling.');
-        } catch (error) {
-            console.error('Failed to start container:', error);
-            // エラーを投げてもジョブ登録自体は成功させるべきなので、ログ出力のみ
-        }
+        
+        // Production環境では、コンテナはCronトリガーによって自動的に管理（ポーリング）されるため、
+        // ここで明示的に起動リクエストを送る必要はない（むしろ送るとFrontendにルーティングされてしまう問題がある）。
+        // 開発環境など、明示的にURLが指定されている場合のみ実行するロジックに変更するか、
+        // もしくは完全に無効化する。ここではシンプルにログを出して終了する。
+        console.log('Container start requested. (Skipping explicit start request as container is self-managed/cron-triggered in production)');
+        return;
     }
 }

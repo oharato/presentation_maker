@@ -24,6 +24,7 @@ RUN apt-get update && apt-get install -y \
     wget \
     xdg-utils \
     dos2unix \
+    gosu \
     # Chromeのインストール (Puppeteer用)
     && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
     && sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list' \
@@ -89,5 +90,4 @@ EXPOSE 80
 # Node.jsのヒープサイズ制限を緩和
 ENV NODE_OPTIONS="--max-old-space-size=2048"
 
-# Directly run the Node.js worker for debugging. Voicevox will not be started with this configuration.
-CMD ["node", "dist/video-worker.js"]
+ENTRYPOINT ["/entrypoint.sh"]

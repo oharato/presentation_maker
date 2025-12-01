@@ -204,12 +204,18 @@ importers:
       '@aws-sdk/client-s3':
         specifier: ^3.939.0
         version: 3.939.0
+      '@cloudflare/containers':
+        specifier: ^0.0.30
+        version: 0.0.30
       '@presentation-maker/core':
         specifier: workspace:*
         version: link:../../../packages/core
       fs-extra:
         specifier: ^11.3.2
         version: 11.3.2
+      hono:
+        specifier: ^4.10.6
+        version: 4.10.6
     devDependencies:
       '@cloudflare/workers-types':
         specifier: ^4.20251125.0
@@ -620,6 +626,9 @@ packages:
 
   '@bcoe/v8-coverage@0.2.3':
     resolution: {integrity: sha512-0hYQ8SB4Db5zvZB4axdMHGwEaQjkZzFjQiN9LVYvIFB2nSUHW9tYpxWriPrWDASIxiaXax83REcLxuSdnGPZtw==}
+
+  '@cloudflare/containers@0.0.30':
+    resolution: {integrity: sha512-i148xBgmyn/pje82ZIyuTr/Ae0BT/YWwa1/GTJcw6DxEjUHAzZLaBCiX446U9OeuJ2rBh/L/9FIzxX5iYNt1AQ==}
 
   '@cloudflare/kv-asset-handler@0.4.0':
     resolution: {integrity: sha512-+tv3z+SPp+gqTIcImN9o0hqE9xyfQjI1XD9pL6NuKjua9B1y7mNYv0S9cP+QEbA4ppVgGZEmKOvHX5G5Ei1CVA==}
@@ -5544,6 +5553,8 @@ snapshots:
       '@babel/helper-validator-identifier': 7.28.5
 
   '@bcoe/v8-coverage@0.2.3': {}
+
+  '@cloudflare/containers@0.0.30': {}
 
   '@cloudflare/kv-asset-handler@0.4.0':
     dependencies:
